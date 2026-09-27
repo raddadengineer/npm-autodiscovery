@@ -46,6 +46,6 @@ EXPOSE 8080
 
 # Health check against internal status endpoint
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:8080/api/status || exit 1
+  CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:${PORT:-8080}/api/status || exit 1
 
 ENTRYPOINT ["/app/npm-autodiscovery"]

@@ -2349,6 +2349,33 @@ func getManagedInfo(host *npm.ProxyHost) (isManaged bool, source, hostID, contai
 	return
 }
 
+// normalizeID safely normalizes numeric/string IDs (like certificate_id and access_list_id) for comparison
+func normalizeID(v interface{}) string {
+	if v == nil {
+		return "0"
+	}
+	switch val := v.(type) {
+	case int:
+		return strconv.Itoa(val)
+	case int64:
+		return strconv.FormatInt(val, 10)
+	case float64:
+		return strconv.Itoa(int(val))
+	case string:
+		s := strings.TrimSpace(val)
+		if s == "" || s == "0" {
+			return "0"
+		}
+		return s
+	default:
+		s := strings.TrimSpace(fmt.Sprintf("%v", val))
+		if s == "" || s == "0" || s == "<nil>" {
+			return "0"
+		}
+		return s
+	}
+}
+
 // Helper: checks if an update is required between NPM's existing proxy host and desired config
 func isUpdateRequired(existing *npm.ProxyHost, desired *npm.ProxyHostRequest) (bool, string) {
 	if !equalStringSlices(existing.DomainNames, desired.DomainNames) {
@@ -2362,6 +2389,9 @@ func isUpdateRequired(existing *npm.ProxyHost, desired *npm.ProxyHostRequest) (b
 	}
 	if !strings.EqualFold(existing.ForwardScheme, desired.ForwardScheme) {
 		return true, fmt.Sprintf("forward scheme changed from %s to %s", existing.ForwardScheme, desired.ForwardScheme)
+	}
+	if normalizeID(existing.CertificateID) != normalizeID(desired.CertificateID) {
+		return true, fmt.Sprintf("certificate ID changed from %v to %v", existing.CertificateID, desired.CertificateID)
 	}
 	if bool(existing.SSLForced) != desired.SSLForced {
 		return true, "SSL forced setting changed"
@@ -2380,6 +2410,12 @@ func isUpdateRequired(existing *npm.ProxyHost, desired *npm.ProxyHostRequest) (b
 	}
 	if bool(existing.HSTSEnabled) != desired.HSTSEnabled {
 		return true, "HSTS setting changed"
+	}
+	if bool(existing.HSTSSubdomains) != desired.HSTSSubdomains {
+		return true, "HSTS subdomains setting changed"
+	}
+	if normalizeID(existing.AccessListID) != normalizeID(desired.AccessListID) {
+		return true, fmt.Sprintf("access list ID changed from %v to %v", existing.AccessListID, desired.AccessListID)
 	}
 	if !equalLocations(existing.Locations, desired.Locations) {
 		return true, "custom locations changed"

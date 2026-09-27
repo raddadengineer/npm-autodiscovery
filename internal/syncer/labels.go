@@ -620,6 +620,13 @@ func getLabelValue(labels map[string]string, prefix string, keys ...string) (str
 		if val, exists := labels[key]; exists {
 			return strings.TrimSpace(val), true
 		}
+		// Handle accidental duplicate prefix (e.g. "npm.npm.certificate_id")
+		if strings.HasSuffix(prefix, ".") {
+			doublePrefixKey := prefix + prefix + key
+			if val, exists := labels[doublePrefixKey]; exists {
+				return strings.TrimSpace(val), true
+			}
+		}
 	}
 	return "", false
 }

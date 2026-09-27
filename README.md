@@ -255,7 +255,7 @@ services:
     container_name: npm-autodiscovery
     restart: unless-stopped
     ports:
-      - '${PORT:-8080}:8080' # Auto-Discovery Dashboard
+      - '${PORT:-8080}:${PORT:-8080}' # Auto-Discovery Dashboard
     env_file:
       - .env
     volumes:
@@ -307,7 +307,7 @@ services:
     container_name: npm-autodiscovery
     restart: unless-stopped
     ports:
-      - '${PORT:-8080}:8080' # Auto-Discovery Management Dashboard
+      - '${PORT:-8080}:${PORT:-8080}' # Auto-Discovery Management Dashboard
     env_file:
       - .env
     volumes:

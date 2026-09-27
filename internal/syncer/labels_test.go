@@ -333,3 +333,30 @@ func TestParseUpstreamLabels(t *testing.T) {
 		t.Errorf("expected fail_timeout 30s, got %s", res.Upstream.FailTimeout)
 	}
 }
+
+func TestDuplicatePrefixLabel(t *testing.T) {
+	cfg := &config.Config{
+		LabelPrefix: "npm.",
+	}
+
+	inspect := &docker.ContainerInspect{
+		ID:   "dup-prefix-1",
+		Name: "/dup-prefix",
+		Config: docker.ContainerConfig{
+			Labels: map[string]string{
+				"npm.frontend.domain":       "vw.halnt.dev",
+				"npm.frontend.port":         "8099",
+				"npm.npm.certificate_id":    "2",
+			},
+		},
+	}
+
+	res, discovered, err := ParseContainerLabels(inspect, cfg)
+	if err != nil || !discovered {
+		t.Fatalf("expected discovery, got discovered=%v, err=%v", discovered, err)
+	}
+
+	if res.CertificateID != 2 {
+		t.Errorf("expected certificate_id 2, got %v", res.CertificateID)
+	}
+}

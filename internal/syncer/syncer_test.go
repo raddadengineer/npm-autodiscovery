@@ -70,3 +70,58 @@ func TestMultiHostIsolation(t *testing.T) {
 		t.Errorf("Failed extracting host_id from AdvancedConfig: isManaged=%v, hostID=%s", isManagedG, hostIDG)
 	}
 }
+
+func TestIsUpdateRequired(t *testing.T) {
+	existing := &npm.ProxyHost{
+		DomainNames:   []string{"app.example.com"},
+		ForwardHost:   "192.168.1.10",
+		ForwardPort:   8080,
+		ForwardScheme: "http",
+		CertificateID: 0,
+		AccessListID:  0,
+	}
+
+	desired := &npm.ProxyHostRequest{
+		DomainNames:   []string{"app.example.com"},
+		ForwardHost:   "192.168.1.10",
+		ForwardPort:   8080,
+		ForwardScheme: "http",
+		CertificateID: 0,
+		AccessListID:  "0",
+	}
+
+	// 1. Equal
+	req, reason := isUpdateRequired(existing, desired)
+	if req {
+		t.Errorf("Expected no update required, got reason: %s", reason)
+	}
+
+	// 2. Certificate ID updated from 0 to 2
+	desired.CertificateID = 2
+	req, reason = isUpdateRequired(existing, desired)
+	if !req || reason != "certificate ID changed from 0 to 2" {
+		t.Errorf("Expected update required for cert ID, got req=%v, reason=%s", req, reason)
+	}
+
+	// Reset
+	existing.CertificateID = 2
+	req, _ = isUpdateRequired(existing, desired)
+	if req {
+		t.Errorf("Expected no update when both have cert ID 2")
+	}
+
+	// 3. Float64 cert ID from JSON unmarshaling vs int cert ID
+	existing.CertificateID = float64(2)
+	desired.CertificateID = 2
+	req, _ = isUpdateRequired(existing, desired)
+	if req {
+		t.Errorf("Expected float64(2) and int(2) to match normalized")
+	}
+
+	// 4. AccessListID change
+	desired.AccessListID = "5"
+	req, reason = isUpdateRequired(existing, desired)
+	if !req {
+		t.Errorf("Expected update required for access list ID change")
+	}
+}

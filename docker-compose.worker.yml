@@ -8,7 +8,7 @@ services:
     container_name: npm-autodiscovery-worker
     restart: unless-stopped
     ports:
-      - '${PORT:-8080}:8080' # Worker Node Dashboard & API
+      - '${PORT:-8080}:${PORT:-8080}' # Worker Node Dashboard & API
     env_file:
       - .env
     volumes:
