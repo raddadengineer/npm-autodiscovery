@@ -1,0 +1,37 @@
+services:
+  # ============================================================================
+  # NPM Auto-Discovery (Remote Worker Agent)
+  # Connects to a central NPM instance across the network
+  # ============================================================================
+  npm-autodiscovery:
+    image: raddadengineer/npm-autodiscovery:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: npm-autodiscovery-worker
+    restart: unless-stopped
+    ports:
+      - '${PORT:-8080}:8080' # Worker Node Dashboard & API
+    env_file:
+      - .env
+    volumes:
+      # Read-only Docker socket mapping allows listening to local container events
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+  # ============================================================================
+  # Example Target Service on Worker Node
+  # Port 8081 on this worker host will be automatically forwarded by central NPM
+  # ============================================================================
+  worker-whoami:
+    image: traefik/whoami:latest
+    container_name: worker-whoami
+    restart: unless-stopped
+    ports:
+      - '8081:80' # Published host port routed via HOST_IP & USE_HOST_PORT
+    labels:
+      - "npm.frontend.domain=worker.local"
+      - "npm.frontend.port=80"
+      - "npm.forward_scheme=http"
+      - "npm.websocket=true"
+      - "npm.block_exploits=true"
+      - "npm.ssl.enabled=false"

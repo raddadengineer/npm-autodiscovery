@@ -1,0 +1,26 @@
+services:
+  # NPM Auto-Discovery Agent on Worker Node
+  npm-autodiscovery:
+    image: raddadengineer/npm-autodiscovery:latest
+    container_name: npm-autodiscovery-worker
+    restart: unless-stopped
+    ports:
+      - '${PORT:-8080}:8080'
+    env_file:
+      - .env
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+  # Example service on this worker node
+  demo-service:
+    image: traefik/whoami:latest
+    container_name: demo-service
+    restart: unless-stopped
+    ports:
+      - '8081:80' # Published port routed via HOST_IP & USE_HOST_PORT
+    labels:
+      - "npm.frontend.domain=worker-app.local"
+      - "npm.frontend.port=80"
+      - "npm.ssl.enabled=false"
+      - "npm.websocket=true"
+      - "npm.block_exploits=true"

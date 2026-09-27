@@ -343,6 +343,39 @@ networks:
     driver: bridge
 ```
 
+### Option C: Multi-Host / Remote Worker Node Deployment
+
+To run an agent on a separate machine (Host 2, Host 3, etc.) that discovers local containers and routes traffic back to a central Nginx Proxy Manager instance (Host 1):
+
+1. **On the worker machine, create your `.env` configuration:**
+```bash
+cp .env.worker.example .env
+```
+
+2. **Configure node identity and cross-host routing in `.env`:**
+```dotenv
+# Central NPM instance reachable from this worker
+NPM_URL=http://192.168.1.10:81
+NPM_USER=admin@example.com
+NPM_PASS=changeme
+
+# Unique worker ID (prevents collision with peer nodes)
+HOST_ID=worker-node-01
+
+# Worker machine IP reachable by central NPM
+HOST_IP=192.168.1.20
+
+# Route ingress traffic to published host ports on HOST_IP
+USE_HOST_PORT=true
+```
+
+3. **Deploy using `docker-compose.worker.yml`:**
+```bash
+docker compose -f docker-compose.worker.yml up -d
+```
+
+Central NPM will automatically register `worker.local` routing to `http://192.168.1.20:8081` tagged with `[host_id: worker-node-01]`, preventing collision or accidental deletion by other nodes.
+
 ### Quickstart Guide
 
 1. **Initial NPM Setup:** Open `http://localhost:81` in your browser. If starting fresh, log in with default credentials (`admin@example.com` / `changeme`) and set your administrator email and password.

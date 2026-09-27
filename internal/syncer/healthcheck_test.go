@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sampson/npm-autodiscovery/internal/config"
-	"github.com/sampson/npm-autodiscovery/internal/docker"
+	"github.com/raddadengineer/npm-autodiscovery/internal/config"
+	"github.com/raddadengineer/npm-autodiscovery/internal/docker"
 )
 
 func TestShouldHoldForHealthCheck(t *testing.T) {

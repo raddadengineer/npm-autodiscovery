@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/sampson/npm-autodiscovery/internal/middleware"
+	"github.com/raddadengineer/npm-autodiscovery/internal/middleware"
 	"gopkg.in/yaml.v3"
 )
 

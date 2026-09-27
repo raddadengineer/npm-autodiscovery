@@ -1,6 +1,6 @@
 package iac
 
-import "github.com/sampson/npm-autodiscovery/internal/middleware"
+import "github.com/raddadengineer/npm-autodiscovery/internal/middleware"
 
 // StaticLocation defines path sub-routing within a static proxy host.
 type StaticLocation struct {

@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sampson/npm-autodiscovery/internal/config"
-	"github.com/sampson/npm-autodiscovery/internal/lxd"
-	"github.com/sampson/npm-autodiscovery/internal/npm"
-	"github.com/sampson/npm-autodiscovery/internal/pve"
+	"github.com/raddadengineer/npm-autodiscovery/internal/config"
+	"github.com/raddadengineer/npm-autodiscovery/internal/lxd"
+	"github.com/raddadengineer/npm-autodiscovery/internal/npm"
+	"github.com/raddadengineer/npm-autodiscovery/internal/pve"
 )
 
 func TestPVEReconciliation(t *testing.T) {

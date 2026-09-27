@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sampson/npm-autodiscovery/internal/config"
-	"github.com/sampson/npm-autodiscovery/internal/docker"
-	"github.com/sampson/npm-autodiscovery/internal/middleware"
+	"github.com/raddadengineer/npm-autodiscovery/internal/config"
+	"github.com/raddadengineer/npm-autodiscovery/internal/docker"
+	"github.com/raddadengineer/npm-autodiscovery/internal/middleware"
 )
 
 // HealthRoutingConfig defines container healthcheck-aware zero-502 routing settings.

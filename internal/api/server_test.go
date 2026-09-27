@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sampson/npm-autodiscovery/internal/config"
-	"github.com/sampson/npm-autodiscovery/internal/metrics"
-	"github.com/sampson/npm-autodiscovery/internal/syncer"
+	"github.com/raddadengineer/npm-autodiscovery/internal/config"
+	"github.com/raddadengineer/npm-autodiscovery/internal/metrics"
+	"github.com/raddadengineer/npm-autodiscovery/internal/syncer"
 )
 
 func TestMetricsEndpoint(t *testing.T) {

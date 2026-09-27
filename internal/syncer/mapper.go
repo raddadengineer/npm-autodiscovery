@@ -5,8 +5,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/sampson/npm-autodiscovery/internal/config"
-	"github.com/sampson/npm-autodiscovery/internal/docker"
+	"github.com/raddadengineer/npm-autodiscovery/internal/config"
+	"github.com/raddadengineer/npm-autodiscovery/internal/docker"
 )
 
 // ResolveForwardHost determines the target IP or hostname that NPM should proxy requests to.

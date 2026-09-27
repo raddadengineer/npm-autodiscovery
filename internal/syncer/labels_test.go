@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sampson/npm-autodiscovery/internal/config"
-	"github.com/sampson/npm-autodiscovery/internal/docker"
+	"github.com/raddadengineer/npm-autodiscovery/internal/config"
+	"github.com/raddadengineer/npm-autodiscovery/internal/docker"
 )
 
 func TestParseContainerLabels(t *testing.T) {

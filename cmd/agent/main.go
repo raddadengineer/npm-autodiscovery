@@ -10,14 +10,14 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/sampson/npm-autodiscovery/internal/api"
-	"github.com/sampson/npm-autodiscovery/internal/config"
-	"github.com/sampson/npm-autodiscovery/internal/docker"
-	"github.com/sampson/npm-autodiscovery/internal/lxd"
-	"github.com/sampson/npm-autodiscovery/internal/npm"
-	"github.com/sampson/npm-autodiscovery/internal/pve"
-	"github.com/sampson/npm-autodiscovery/internal/syncer"
-	"github.com/sampson/npm-autodiscovery/web"
+	"github.com/raddadengineer/npm-autodiscovery/internal/api"
+	"github.com/raddadengineer/npm-autodiscovery/internal/config"
+	"github.com/raddadengineer/npm-autodiscovery/internal/docker"
+	"github.com/raddadengineer/npm-autodiscovery/internal/lxd"
+	"github.com/raddadengineer/npm-autodiscovery/internal/npm"
+	"github.com/raddadengineer/npm-autodiscovery/internal/pve"
+	"github.com/raddadengineer/npm-autodiscovery/internal/syncer"
+	"github.com/raddadengineer/npm-autodiscovery/web"
 )
 
 const banner = `

@@ -3,8 +3,8 @@ package syncer
 import (
 	"testing"
 
-	"github.com/sampson/npm-autodiscovery/internal/config"
-	"github.com/sampson/npm-autodiscovery/internal/docker"
+	"github.com/raddadengineer/npm-autodiscovery/internal/config"
+	"github.com/raddadengineer/npm-autodiscovery/internal/docker"
 )
 
 func TestResolveForwardHost(t *testing.T) {

@@ -876,7 +876,7 @@ services:
 
   # 2. NPM Auto-Discovery Agent (v2.0)
   npm-autodiscovery:
-    image: 'sampson/npm-autodiscovery:latest'
+    image: 'raddadengineer/npm-autodiscovery:latest'
     container_name: npm-autodiscovery
     restart: unless-stopped
     ports:
@@ -954,7 +954,7 @@ docker run -d \
   -e PVE_POLL_INTERVAL=15s \
   -e PVE_PREFERRED_INTERFACE=eth0 \
   -e PVE_ALLOWED_SUBNETS="192.168.1.0/24" \
-  sampson/npm-autodiscovery:latest
+  raddadengineer/npm-autodiscovery:latest
 
 # Tag LXC 101 in Proxmox Web GUI or CLI:
 pct set 101 -tags "npm.domain=adguard.homelab.lan,npm.port=80,npm.ssl=true"
@@ -987,7 +987,7 @@ docker run -d \
   -e LXD_ENABLED=true \
   -e LXD_SOCKET=/var/snap/lxd/common/lxd/unix.socket \
   -e LXD_PREFERRED_INTERFACE=eth0 \
-  sampson/npm-autodiscovery:latest
+  raddadengineer/npm-autodiscovery:latest
 
 # Configure container metadata via Incus / LXD CLI:
 incus config set my-web user.npm.domain "dashboard.homelab.local"
@@ -1054,7 +1054,7 @@ streams:
 
 services:
   npm-autodiscovery:
-    image: 'sampson/npm-autodiscovery:latest'
+    image: 'raddadengineer/npm-autodiscovery:latest'
     container_name: npm-autodiscovery
     restart: unless-stopped
     ports:

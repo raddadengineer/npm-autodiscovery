@@ -1,4 +1,4 @@
-module github.com/sampson/npm-autodiscovery
+module github.com/raddadengineer/npm-autodiscovery
 
 go 1.26.1
 

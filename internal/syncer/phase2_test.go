@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sampson/npm-autodiscovery/internal/config"
-	"github.com/sampson/npm-autodiscovery/internal/docker"
-	"github.com/sampson/npm-autodiscovery/internal/iac"
-	"github.com/sampson/npm-autodiscovery/internal/npm"
+	"github.com/raddadengineer/npm-autodiscovery/internal/config"
+	"github.com/raddadengineer/npm-autodiscovery/internal/docker"
+	"github.com/raddadengineer/npm-autodiscovery/internal/iac"
+	"github.com/raddadengineer/npm-autodiscovery/internal/npm"
 )
 
 func TestMicroserviceCustomLocationsAggregation(t *testing.T) {

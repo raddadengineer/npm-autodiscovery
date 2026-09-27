@@ -1,0 +1,40 @@
+services:
+  # 1. Central Nginx Proxy Manager
+  npm:
+    image: 'jc21/nginx-proxy-manager:latest'
+    container_name: nginx-proxy-manager
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+      - '81:81'
+    environment:
+      DISABLE_IPV6: 'true'
+    volumes:
+      - npm_data:/data
+      - npm_letsencrypt:/etc/letsencrypt
+    networks:
+      - npm-network
+
+  # 2. Local Central Agent (Optional - discovers containers running on Host 1)
+  npm-autodiscovery:
+    image: raddadengineer/npm-autodiscovery:latest
+    container_name: npm-autodiscovery-central
+    restart: unless-stopped
+    ports:
+      - '${PORT:-8080}:8080'
+    env_file:
+      - .env
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - npm-network
+
+volumes:
+  npm_data:
+  npm_letsencrypt:
+
+networks:
+  npm-network:
+    name: ${NPM_NETWORK:-npm-network}
+    driver: bridge
