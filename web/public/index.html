@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NPM Auto-Discovery | Automated Docker Ingress for Nginx Proxy Manager</title>
+  <meta name="description" content="Automated Docker container discovery and proxy provisioning for Nginx Proxy Manager" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <!-- Header / Navigation Bar -->
+  <header class="app-header">
+    <div class="header-container">
+      <div class="brand">
+        <div class="brand-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
+            <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
+            <line x1="6" y1="6" x2="6.01" y2="6"></line>
+            <line x1="6" y1="18" x2="6.01" y2="18"></line>
+          </svg>
+          <span class="pulse-indicator"></span>
+        </div>
+        <div class="brand-text">
+          <h1>NPM Auto-Discovery</h1>
+          <span class="badge version-badge">v1.0.0</span>
+        </div>
+      </div>
+
+      <!-- Quick status pills -->
+      <div class="header-status-group">
+        <div class="status-pill" id="node-status-pill" title="Host Node Identity">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
+            <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
+          </svg>
+          <span class="status-label">Node:</span>
+          <span class="status-val" id="node-id-text">detecting...</span>
+        </div>
+        <div class="status-pill" id="docker-status-pill" title="Docker Socket Connection">
+          <span class="status-dot ping-dot"></span>
+          <span class="status-label">Docker:</span>
+          <span class="status-val" id="docker-status-text">Connecting...</span>
+        </div>
+        <div class="status-pill" id="npm-status-pill" title="Nginx Proxy Manager API Connection">
+          <span class="status-dot ping-dot"></span>
+          <span class="status-label">NPM API:</span>
+          <span class="status-val" id="npm-status-text">Connecting...</span>
+        </div>
+        
+        <button id="sync-now-btn" class="btn btn-primary" title="Trigger full container scan and NPM sync">
+          <svg class="btn-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
+          </svg>
+          <span>Sync Now</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main App Layout -->
+  <main class="main-content">
+    <div class="container">
+      
+      <!-- Metrics Overview Cards -->
+      <section class="metrics-grid">
+        <div class="metric-card glass-panel">
+          <div class="metric-header">
+            <span class="metric-title">Active Discovered Proxies</span>
+            <div class="metric-icon-wrap icon-cyan">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="2" y1="12" x2="22" y2="12"></line>
+                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1 4-10z"></path>
+              </svg>
+            </div>
+          </div>
+          <div class="metric-value" id="active-proxies-count">0</div>
+          <div class="metric-footer">
+            <span class="metric-subtext"><span id="ssl-active-count">0</span> with SSL/TLS enabled</span>
+          </div>
+        </div>
+
+        <div class="metric-card glass-panel">
+          <div class="metric-header">
+            <span class="metric-title">Docker Containers</span>
+            <div class="metric-icon-wrap icon-emerald">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+                <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+                <line x1="12" y1="22.08" x2="12" y2="12"></line>
+              </svg>
+            </div>
+          </div>
+          <div class="metric-value" id="running-containers-count">0</div>
+          <div class="metric-footer">
+            <span class="metric-subtext" id="docker-version-text">Docker Daemon</span>
+          </div>
+        </div>
+
+        <div class="metric-card glass-panel">
+          <div class="metric-header">
+            <span class="metric-title">NPM Target Host</span>
+            <div class="metric-icon-wrap icon-violet">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+              </svg>
+            </div>
+          </div>
+          <div class="metric-value metric-sm" id="npm-url-text">http://npm:81</div>
+          <div class="metric-footer">
+            <span class="metric-subtext" id="npm-auth-status">JWT Auth: Active</span>
+          </div>
+        </div>
+
+        <div class="metric-card glass-panel">
+          <div class="metric-header">
+            <span class="metric-title">Engine Health & Sync</span>
+            <div class="metric-icon-wrap icon-amber">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+              </svg>
+            </div>
+          </div>
+          <div class="metric-value metric-sm" id="last-sync-time">Just now</div>
+          <div class="metric-footer">
+            <span class="metric-subtext"><span id="total-events-count">0</span> events processed</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Navigation Tabs -->
+      <div class="tab-navigation">
+        <button class="tab-btn active" data-tab="proxies-view">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+            <polyline points="2 17 12 22 22 17"></polyline>
+            <polyline points="2 12 12 17 22 12"></polyline>
+          </svg>
+          <span>Active Proxies</span>
+          <span class="tab-counter" id="tab-proxies-count">0</span>
+        </button>
+
+        <button class="tab-btn" data-tab="events-view">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="4 17 10 11 4 5"></polyline>
+            <line x1="12" y1="19" x2="20" y2="19"></line>
+          </svg>
+          <span>Live Event Log</span>
+          <span class="live-dot-indicator"></span>
+        </button>
+
+        <button class="tab-btn" data-tab="containers-view">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+            <line x1="8" y1="21" x2="16" y2="21"></line>
+            <line x1="12" y1="17" x2="12" y2="21"></line>
+          </svg>
+          <span>All Containers</span>
+          <span class="tab-counter" id="tab-containers-count">0</span>
+        </button>
+
+        <button class="tab-btn" data-tab="docs-view">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+            <line x1="16" y1="13" x2="8" y2="13"></line>
+            <line x1="16" y1="17" x2="8" y2="17"></line>
+            <polyline points="10 9 9 9 8 9"></polyline>
+          </svg>
+          <span>Label Reference & Setup</span>
+        </button>
+      </div>
+
+      <!-- TAB 1: Discovered Proxies Table View -->
+      <section id="proxies-view" class="tab-content active">
+        <div class="panel glass-panel">
+          <div class="panel-header">
+            <div class="panel-title-group">
+              <h2>Auto-Discovered Proxy Hosts</h2>
+              <p class="panel-subtitle">Proxy hosts actively provisioned and synchronized in Nginx Proxy Manager.</p>
+            </div>
+            
+            <div class="panel-actions">
+              <div class="search-input-wrap">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="11" cy="11" r="8"></circle>
+                  <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                </svg>
+                <input type="text" id="proxies-search" placeholder="Search domain, container, IP..." />
+              </div>
+            </div>
+          </div>
+
+          <div class="table-responsive">
+            <table class="data-table" id="proxies-table">
+              <thead>
+                <tr>
+                  <th>Status</th>
+                  <th>Domain Names</th>
+                  <th>Forward Target</th>
+                  <th>Node / Host</th>
+                  <th>Container</th>
+                  <th>SSL / TLS</th>
+                  <th>Strategy</th>
+                  <th>NPM ID</th>
+                  <th>Last Synced</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="proxies-tbody">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Empty State -->
+          <div class="empty-state" id="proxies-empty" style="display: none;">
+            <div class="empty-icon">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="8" x2="12" y2="12"></line>
+                <line x1="12" y1="16" x2="12.01" y2="16"></line>
+              </svg>
+            </div>
+            <h3>No auto-discovered proxy hosts found</h3>
+            <p>Start a container with the label <code>npm.frontend.domain=myapp.example.com</code> to automatically create a proxy host.</p>
+            <button class="btn btn-secondary mt-3" onclick="switchTab('docs-view')">View Label Cheatsheet</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 2: Live Event Log -->
+      <section id="events-view" class="tab-content">
+        <div class="panel glass-panel">
+          <div class="panel-header">
+            <div class="panel-title-group">
+              <h2>Real-Time Discovery Log</h2>
+              <p class="panel-subtitle">Live stream of container events, discovery actions, and NPM API requests.</p>
+            </div>
+            <div class="panel-actions">
+              <div class="filter-group">
+                <button class="filter-btn active" data-filter="all">All</button>
+                <button class="filter-btn" data-filter="discovery">Discovery</button>
+                <button class="filter-btn" data-filter="npm">NPM API</button>
+                <button class="filter-btn" data-filter="docker">Docker</button>
+                <button class="filter-btn" data-filter="error">Errors</button>
+              </div>
+              <button class="btn btn-ghost btn-sm" id="clear-logs-btn">Clear View</button>
+              <label class="toggle-switch" title="Auto scroll to latest event">
+                <input type="checkbox" id="autoscroll-toggle" checked />
+                <span class="toggle-slider"></span>
+                <span class="toggle-label">Auto-scroll</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="terminal-window" id="terminal-logs">
+            <!-- Dynamically populated via SSE -->
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 3: All Containers View -->
+      <section id="containers-view" class="tab-content">
+        <div class="panel glass-panel">
+          <div class="panel-header">
+            <div class="panel-title-group">
+              <h2>Docker Containers Inspector</h2>
+              <p class="panel-subtitle">Review all containers running on the Docker daemon and their discovery readiness.</p>
+            </div>
+            <div class="panel-actions">
+              <div class="search-input-wrap">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="11" cy="11" r="8"></circle>
+                  <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                </svg>
+                <input type="text" id="containers-search" placeholder="Filter containers..." />
+              </div>
+            </div>
+          </div>
+
+          <div class="table-responsive">
+            <table class="data-table" id="containers-table">
+              <thead>
+                <tr>
+                  <th>Container</th>
+                  <th>Image</th>
+                  <th>State</th>
+                  <th>Discovery Status</th>
+                  <th>Detected Domains</th>
+                  <th>Port</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="containers-tbody">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 4: Label Reference & Docs -->
+      <section id="docs-view" class="tab-content">
+        <div class="docs-grid">
+          <div class="panel glass-panel">
+            <div class="panel-header">
+              <h2>Supported Container Labels</h2>
+            </div>
+            <p class="mb-4 text-muted">Attach these labels in your <code>docker-compose.yml</code> or <code>docker run</code> commands to configure automatic proxying:</p>
+            
+            <div class="table-responsive">
+              <table class="docs-table">
+                <thead>
+                  <tr>
+                    <th>Label</th>
+                    <th>Type</th>
+                    <th>Default</th>
+                    <th>Description</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><code>npm.frontend.domain</code></td>
+                    <td><span class="type-tag">string</span></td>
+                    <td><em>Required</em></td>
+                    <td>Domain name(s) for the proxy host. Multiple domains can be comma-separated: <code>app.example.com, web.example.com</code></td>
+                  </tr>
+                  <tr>
+                    <td><code>npm.frontend.port</code></td>
+                    <td><span class="type-tag">int</span></td>
+                    <td>Auto-detected</td>
+                    <td>Internal container port to route traffic to (e.g., <code>80</code>, <code>3000</code>, <code>8080</code>).</td>
+                  </tr>
+                  <tr>
+                    <td><code>npm.ssl.enabled</code></td>
+                    <td><span class="type-tag">bool</span></td>
+                    <td><code>false</code></td>
+                    <td>Enable SSL for this proxy host. (Matches <code>DEFAULT_SSL_ENABLED</code>)</td>
+                  </tr>
+                  <tr>
+                    <td><code>npm.ssl.forced</code></td>
+                    <td><span class="type-tag">bool</span></td>
+                    <td><code>false</code></td>
+                    <td>Force HTTP to HTTPS redirect.</td>
+                  </tr>
+                  <tr>
+                    <td><code>npm.forward_scheme</code></td>
+                    <td><span class="type-tag">string</span></td>
+                    <td><code>http</code></td>
+                    <td>Forward scheme: <code>http</code> or <code>https</code>.</td>
+                  </tr>
+                  <tr>
+                    <td><code>npm.forward_host</code></td>
+                    <td><span class="type-tag">string</span></td>
+                    <td>Auto</td>
+                    <td>Custom IP/hostname override instead of auto-discovered Docker bridge IP or container name.</td>
+                  </tr>
+                  <tr>
+                    <td><code>npm.certificate_id</code></td>
+                    <td><span class="type-tag">int / string</span></td>
+                    <td><code>0</code></td>
+                    <td>Existing NPM Certificate ID (e.g. <code>1</code>) or <code>"new"</code> to request Let's Encrypt.</td>
+                  </tr>
+                  <tr>
+                    <td><code>npm.websocket</code></td>
+                    <td><span class="type-tag">bool</span></td>
+                    <td><code>true</code></td>
+                    <td>Allow WebSocket Upgrade headers (essential for socket.io, modern SPAs).</td>
+                  </tr>
+                  <tr>
+                    <td><code>npm.block_exploits</code></td>
+                    <td><span class="type-tag">bool</span></td>
+                    <td><code>true</code></td>
+                    <td>Enable NPM's exploit blocking filters.</td>
+                  </tr>
+                  <tr>
+                    <td><code>npm.caching</code></td>
+                    <td><span class="type-tag">bool</span></td>
+                    <td><code>false</code></td>
+                    <td>Enable Nginx asset caching.</td>
+                  </tr>
+                  <tr>
+                    <td><code>npm.hsts</code></td>
+                    <td><span class="type-tag">bool</span></td>
+                    <td><code>false</code></td>
+                    <td>Enable HTTP Strict Transport Security (HSTS).</td>
+                  </tr>
+                  <tr>
+                    <td><code>npm.enabled</code></td>
+                    <td><span class="type-tag">bool</span></td>
+                    <td><code>true</code></td>
+                    <td>Explicitly enable or disable discovery for this container (<code>true</code> or <code>false</code>).</td>
+                  </tr>
+                  <tr>
+                    <td><code>npm.advanced_config</code></td>
+                    <td><span class="type-tag">string</span></td>
+                    <td><code>""</code></td>
+                    <td>Custom Nginx directives inserted directly into the server block.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="panel glass-panel">
+            <div class="panel-header">
+              <h2>Quick Example: Docker Compose</h2>
+            </div>
+            <p class="mb-3 text-muted">Example service showing automatic proxy registration:</p>
+            
+            <div class="code-snippet-wrap">
+              <pre><code class="language-yaml">version: '3.8'
+
+services:
+  my-web-app:
+    image: nginx:alpine
+    container_name: my-web-app
+    restart: unless-stopped
+    networks:
+      - npm-network
+    labels:
+      - "npm.frontend.domain=app.mycompany.local"
+      - "npm.frontend.port=80"
+      - "npm.ssl.enabled=false"
+      - "npm.websocket=true"
+      - "npm.block_exploits=true"
+
+networks:
+  npm-network:
+    external: true</code></pre>
+            </div>
+
+            <div class="info-alert mt-4">
+              <strong>💡 Pro Tip:</strong> Ensure that your web container and Nginx Proxy Manager share a common Docker network (e.g. <code>npm-network</code>). NPM can then reach the container directly using its Docker DNS container name!
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <!-- Modal: Details / Label Generator -->
+  <div class="modal-overlay" id="detail-modal" style="display: none;">
+    <div class="modal-card glass-panel">
+      <div class="modal-header">
+        <h3 id="modal-title">Container Details</h3>
+        <button class="modal-close" onclick="closeModal()">&times;</button>
+      </div>
+      <div class="modal-body" id="modal-content">
+        <!-- Content inserted dynamically -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <script src="js/app.js"></script>
+</body>
+</html>

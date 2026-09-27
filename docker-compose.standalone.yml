@@ -1,0 +1,40 @@
+services:
+  npm-autodiscovery:
+    image: raddadengineer/npm-autodiscovery:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: npm-autodiscovery
+    restart: unless-stopped
+    ports:
+      - '${PORT:-8080}:8080'
+    environment:
+      # Point to your existing Nginx Proxy Manager instance
+      # Can be an internal Docker container name, Docker host IP, or LAN address:
+      - NPM_URL=${NPM_URL:-http://172.17.0.1:81}
+      - NPM_USER=${NPM_USER:-admin@example.com}
+      - NPM_PASS=${NPM_PASS:-changeme}
+      # Multi-Host / Cluster Configuration
+      # Node identity (e.g., "worker-01", "vps-east")
+      - HOST_ID=${HOST_ID:-}
+      # If this node is remote from NPM, set HOST_IP so NPM proxies to this machine's IP
+      - HOST_IP=${HOST_IP:-}
+      - USE_HOST_PORT=${USE_HOST_PORT:-false}
+      - NPM_NETWORK=${NPM_NETWORK:-npm-network}
+      - FORWARD_HOST_STRATEGY=${FORWARD_HOST_STRATEGY:-auto}
+      - POLL_INTERVAL=${POLL_INTERVAL:-30s}
+      - DEFAULT_FORWARD_SCHEME=${DEFAULT_FORWARD_SCHEME:-http}
+      - DEFAULT_SSL_ENABLED=${DEFAULT_SSL_ENABLED:-false}
+      - DEFAULT_WEBSOCKET=${DEFAULT_WEBSOCKET:-true}
+      - DEFAULT_BLOCK_EXPLOITS=${DEFAULT_BLOCK_EXPLOITS:-true}
+      - DOCKER_SOCKET=/var/run/docker.sock
+    volumes:
+      # Read-only Docker socket mapping
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - npm-network
+
+networks:
+  npm-network:
+    name: ${NPM_NETWORK:-npm-network}
+    external: true
