@@ -22,12 +22,7 @@ services:
       - DEFAULT_FORWARD_SCHEME=${DEFAULT_FORWARD_SCHEME:-http}
       - DEFAULT_SSL_ENABLED=${DEFAULT_SSL_ENABLED:-false}
       - DEFAULT_WEBSOCKET=${DEFAULT_WEBSOCKET:-true}
-      # Multi-Host / Cluster Configuration
-      # Unique node identifier (defaults to hostname if omitted)
-      - HOST_ID=${HOST_ID:-}
-      # Set HOST_IP if this host is remote from the NPM instance so NPM forwards traffic to this host IP/DNS
-      - HOST_IP=${HOST_IP:-}
-      - USE_HOST_PORT=${USE_HOST_PORT:-false}
+      - DEFAULT_BLOCK_EXPLOITS=${DEFAULT_BLOCK_EXPLOITS:-true}
       - DOCKER_SOCKET=/var/run/docker.sock
     volumes:
       # Read-only Docker socket mapping allows listening to container events
@@ -46,9 +41,9 @@ services:
       - with-npm
       - all-in-one
     ports:
-      - '80:80'     # Public HTTP Traffic
-      - '443:443'   # Public HTTPS Traffic
-      - '81:81'     # NPM Admin Web UI & Official API
+      - '80:80' # Public HTTP Traffic
+      - '443:443' # Public HTTPS Traffic
+      - '81:81' # NPM Admin Web UI & Official API
     environment:
       DISABLE_IPV6: 'true'
     volumes:
