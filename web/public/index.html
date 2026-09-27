@@ -881,12 +881,8 @@ services:
     restart: unless-stopped
     ports:
       - '8080:8080' # Agent Dashboard
-    environment:
-      - NPM_URL=http://nginx-proxy-manager:81
-      - NPM_USER=admin@example.com
-      - NPM_PASS=changeme
-      - NPM_NETWORK=npm-network
-      - POLL_INTERVAL=30s
+    env_file:
+      - .env
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
@@ -1063,16 +1059,8 @@ services:
     restart: unless-stopped
     ports:
       - '8080:8080'
-    environment:
-      # Central NPM Instance
-      - NPM_URL=http://192.168.1.10:81
-      - NPM_USER=admin@example.com
-      - NPM_PASS=changeme
-      # Multi-Host Isolation & Remote Routing
-      - HOST_ID=worker-node-02
-      - HOST_IP=192.168.1.25
-      - USE_HOST_PORT=true
-      - POLL_INTERVAL=30s
+    env_file:
+      - .env
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro</code></pre>
               </div>

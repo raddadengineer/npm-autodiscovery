@@ -11,19 +11,8 @@ services:
     restart: unless-stopped
     ports:
       - '${PORT:-8080}:8080' # Auto-Discovery Management Dashboard & API
-    environment:
-      # Target Nginx Proxy Manager instance (can be container name, IP, or hostname)
-      - NPM_URL=${NPM_URL:-http://nginx-proxy-manager:81}
-      - NPM_USER=${NPM_USER:-admin@example.com}
-      - NPM_PASS=${NPM_PASS:-changeme}
-      - NPM_NETWORK=${NPM_NETWORK:-npm-network}
-      - FORWARD_HOST_STRATEGY=${FORWARD_HOST_STRATEGY:-auto}
-      - POLL_INTERVAL=${POLL_INTERVAL:-30s}
-      - DEFAULT_FORWARD_SCHEME=${DEFAULT_FORWARD_SCHEME:-http}
-      - DEFAULT_SSL_ENABLED=${DEFAULT_SSL_ENABLED:-false}
-      - DEFAULT_WEBSOCKET=${DEFAULT_WEBSOCKET:-true}
-      - DEFAULT_BLOCK_EXPLOITS=${DEFAULT_BLOCK_EXPLOITS:-true}
-      - DOCKER_SOCKET=/var/run/docker.sock
+    env_file:
+      - .env
     volumes:
       # Read-only Docker socket mapping allows listening to container events
       - /var/run/docker.sock:/var/run/docker.sock:ro

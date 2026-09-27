@@ -221,13 +221,30 @@ NPM Auto-Discovery provides three host resolution strategies (`FORWARD_HOST_STRA
 
 ### Option A: Standalone Deployment (Existing NPM Instance)
 
-If you already have Nginx Proxy Manager running, simply run NPM Auto-Discovery as a standalone container:
+If you already have Nginx Proxy Manager running, simply configure your `.env` file and run NPM Auto-Discovery:
 
+1. **Create your `.env` configuration file:**
+```bash
+cp .env.example .env
+```
+
+2. **Configure your NPM instance connection in `.env`:**
+```dotenv
+# Target Nginx Proxy Manager instance
+NPM_URL=http://nginx-proxy-manager:81 # or http://192.168.1.100:81
+NPM_USER=admin@example.com
+NPM_PASS=changeme
+NPM_NETWORK=npm-network
+FORWARD_HOST_STRATEGY=auto
+POLL_INTERVAL=30s
+```
+
+3. **Start the agent using Docker Compose:**
 ```bash
 docker compose up -d
 ```
 
-By default, `docker-compose.yml` runs **only** the `npm-autodiscovery` agent. Configure `NPM_URL` in `.env` or pass it directly:
+`docker-compose.yml` loads configuration from `.env` via `env_file`:
 
 ```yaml
 version: '3.8'
@@ -239,14 +256,9 @@ services:
     container_name: npm-autodiscovery
     restart: unless-stopped
     ports:
-      - '8080:8080' # Auto-Discovery Dashboard
-    environment:
-      - NPM_URL=http://nginx-proxy-manager:81 # or http://192.168.1.100:81
-      - NPM_USER=admin@example.com
-      - NPM_PASS=changeme
-      - NPM_NETWORK=npm-network
-      - FORWARD_HOST_STRATEGY=auto
-      - POLL_INTERVAL=30s
+      - '${PORT:-8080}:8080' # Auto-Discovery Dashboard
+    env_file:
+      - .env
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
@@ -254,7 +266,7 @@ services:
 
 networks:
   npm-network:
-    name: npm-network
+    name: ${NPM_NETWORK:-npm-network}
     driver: bridge # or external: true if network already exists
 ```
 
@@ -263,6 +275,7 @@ networks:
 To spin up NPM Auto-Discovery alongside a new Nginx Proxy Manager instance and a demo target service in a single command, you can use the built-in Compose profiles:
 
 ```bash
+cp .env.example .env
 docker compose --profile all-in-one up -d
 ```
 
@@ -295,14 +308,9 @@ services:
     container_name: npm-autodiscovery
     restart: unless-stopped
     ports:
-      - '8080:8080' # Auto-Discovery Management Dashboard
-    environment:
-      - NPM_URL=http://npm:81
-      - NPM_USER=admin@example.com
-      - NPM_PASS=changeme
-      - NPM_NETWORK=npm-network
-      - FORWARD_HOST_STRATEGY=auto
-      - POLL_INTERVAL=30s
+      - '${PORT:-8080}:8080' # Auto-Discovery Management Dashboard
+    env_file:
+      - .env
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
@@ -331,7 +339,7 @@ volumes:
 
 networks:
   npm-network:
-    name: npm-network
+    name: ${NPM_NETWORK:-npm-network}
     driver: bridge
 ```
 
