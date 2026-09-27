@@ -64,17 +64,33 @@ type ContainerInspect struct {
 	NetworkSettings NetworkSettings  `json:"NetworkSettings"`
 }
 
+// HealthLog represents a single health check execution result.
+type HealthLog struct {
+	Start    string `json:"Start"`
+	End      string `json:"End"`
+	ExitCode int    `json:"ExitCode"`
+	Output   string `json:"Output"`
+}
+
+// ContainerHealth represents Docker health check status.
+type ContainerHealth struct {
+	Status        string      `json:"Status"` // "starting", "healthy", "unhealthy", "none"
+	FailingStreak int         `json:"FailingStreak"`
+	Log           []HealthLog `json:"Log,omitempty"`
+}
+
 // ContainerState represents container execution status.
 type ContainerState struct {
-	Status   string `json:"Status"`
-	Running  bool   `json:"Running"`
-	Paused   bool   `json:"Paused"`
-	Restarting bool `json:"Restarting"`
-	OOMKilled bool  `json:"OOMKilled"`
-	Dead     bool   `json:"Dead"`
-	Pid      int    `json:"Pid"`
-	ExitCode int    `json:"ExitCode"`
-	Error    string `json:"Error"`
+	Status     string           `json:"Status"`
+	Running    bool             `json:"Running"`
+	Paused     bool             `json:"Paused"`
+	Restarting bool             `json:"Restarting"`
+	OOMKilled  bool             `json:"OOMKilled"`
+	Dead       bool             `json:"Dead"`
+	Pid        int              `json:"Pid"`
+	ExitCode   int              `json:"ExitCode"`
+	Error      string           `json:"Error"`
+	Health     *ContainerHealth `json:"Health,omitempty"`
 }
 
 // Actor describes the target of a Docker event.

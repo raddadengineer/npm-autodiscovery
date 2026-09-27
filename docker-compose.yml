@@ -6,7 +6,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: sampson/npm-autodiscovery:latest
+    image: raddadengineer/npm-autodiscovery:latest
     container_name: npm-autodiscovery
     restart: unless-stopped
     ports:

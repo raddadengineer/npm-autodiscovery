@@ -1,6 +1,7 @@
 // NPM Auto-Discovery Dashboard Single Page Application
 let activeTab = 'proxies-view';
 let proxiesData = [];
+let streamsData = [];
 let containersData = [];
 let currentLogFilter = 'all';
 let autoScrollLogs = true;
@@ -10,11 +11,14 @@ document.addEventListener('DOMContentLoaded', () => {
   initSearchAndFilters();
   initSyncButton();
   initEventStream();
+  initDocsSubtabs();
+  initDocsSearch();
   loadInitialData();
 
   // Periodic polling for status and tables every 5 seconds as fallback
   setInterval(fetchStatus, 5000);
   setInterval(fetchProxies, 6000);
+  setInterval(fetchStreams, 6000);
   setInterval(fetchContainers, 10000);
 });
 
@@ -39,6 +43,8 @@ function switchTab(tabId) {
 
   if (tabId === 'containers-view') {
     fetchContainers();
+  } else if (tabId === 'streams-view') {
+    fetchStreams();
   }
 }
 
@@ -48,6 +54,13 @@ function initSearchAndFilters() {
   if (proxiesSearch) {
     proxiesSearch.addEventListener('input', (e) => {
       renderProxiesTable(e.target.value.toLowerCase());
+    });
+  }
+
+  const streamsSearch = document.getElementById('streams-search');
+  if (streamsSearch) {
+    streamsSearch.addEventListener('input', (e) => {
+      renderStreamsTable(e.target.value.toLowerCase());
     });
   }
 
@@ -102,6 +115,7 @@ function initSyncButton() {
       setTimeout(() => {
         fetchStatus();
         fetchProxies();
+        fetchStreams();
       }, 500);
     } catch (err) {
       showToast('Sync request failed: ' + err.message, 'error');
@@ -118,6 +132,7 @@ function initSyncButton() {
 async function loadInitialData() {
   await fetchStatus();
   await fetchProxies();
+  await fetchStreams();
   await fetchContainers();
 }
 
@@ -158,9 +173,63 @@ async function fetchStatus() {
       npmText.textContent = 'Auth Failed';
     }
 
+    // PVE Status Pill & Metrics
+    const pvePill = document.getElementById('pve-status-pill');
+    if (pvePill) {
+      const pveDot = pvePill.querySelector('.status-dot');
+      const pveText = document.getElementById('pve-status-text');
+      if (!status.pve_enabled) {
+        pveDot.className = 'status-dot';
+        pveText.textContent = 'Disabled';
+      } else if (status.pve_connected) {
+        pveDot.className = 'status-dot ping-dot connected';
+        pveText.textContent = status.pve_node ? `Node: ${status.pve_node}` : 'Connected';
+      } else {
+        pveDot.className = 'status-dot ping-dot disconnected';
+        pveText.textContent = 'Disconnected';
+      }
+    }
+
+    if (document.getElementById('pve-containers-count')) {
+      document.getElementById('pve-containers-count').textContent = status.pve_running_containers || 0;
+    }
+    if (document.getElementById('pve-status-detail')) {
+      document.getElementById('pve-status-detail').textContent = status.pve_version ? `PVE ${status.pve_version}` : (status.pve_enabled ? (status.pve_node || 'Proxmox API') : 'Disabled');
+    }
+
+    // LXD Status Pill & Metrics
+    const lxdPill = document.getElementById('lxd-status-pill');
+    if (lxdPill) {
+      const lxdDot = lxdPill.querySelector('.status-dot');
+      const lxdText = document.getElementById('lxd-status-text');
+      if (!status.lxd_enabled) {
+        lxdDot.className = 'status-dot';
+        lxdText.textContent = 'Disabled';
+      } else if (status.lxd_connected) {
+        lxdDot.className = 'status-dot ping-dot connected';
+        lxdText.textContent = 'Connected';
+      } else {
+        lxdDot.className = 'status-dot ping-dot disconnected';
+        lxdText.textContent = 'Disconnected';
+      }
+    }
+
+    if (document.getElementById('lxd-containers-count')) {
+      document.getElementById('lxd-containers-count').textContent = status.lxd_running_containers || 0;
+    }
+    if (document.getElementById('lxd-status-detail')) {
+      document.getElementById('lxd-status-detail').textContent = status.lxd_version ? `v${status.lxd_version}` : (status.lxd_enabled ? 'Unix Socket' : 'Disabled');
+    }
+
     // Metric Cards
     document.getElementById('active-proxies-count').textContent = status.active_proxies;
     document.getElementById('tab-proxies-count').textContent = status.active_proxies;
+    if (document.getElementById('active-streams-count')) {
+      document.getElementById('active-streams-count').textContent = status.active_streams || 0;
+    }
+    if (document.getElementById('tab-streams-count')) {
+      document.getElementById('tab-streams-count').textContent = status.active_streams || 0;
+    }
     document.getElementById('running-containers-count').textContent = status.running_containers;
     document.getElementById('docker-version-text').textContent = status.docker_version || 'Docker Socket';
     document.getElementById('npm-url-text').textContent = status.npm_url || 'NPM API';
@@ -194,6 +263,93 @@ async function fetchProxies() {
   } catch (err) {
     console.warn('Failed to fetch proxies:', err);
   }
+}
+
+// Fetch Layer 4 Streams
+async function fetchStreams() {
+  try {
+    const res = await fetch('/api/streams');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    streamsData = data.streams || [];
+
+    if (document.getElementById('tab-streams-count')) {
+      document.getElementById('tab-streams-count').textContent = streamsData.length;
+    }
+    if (document.getElementById('active-streams-count')) {
+      document.getElementById('active-streams-count').textContent = streamsData.length;
+    }
+
+    renderStreamsTable();
+  } catch (err) {
+    console.warn('Failed to fetch streams:', err);
+  }
+}
+
+// Render Layer 4 Streams Table
+function renderStreamsTable(filterText = '') {
+  const tbody = document.getElementById('streams-tbody');
+  const emptyState = document.getElementById('streams-empty');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+
+  const filtered = streamsData.filter(s => {
+    if (!filterText) return true;
+    const searchStr = `${s.incoming_port} ${s.forwarding_host}:${s.forwarding_port} ${s.container_name || ''} ${s.tcp ? 'tcp' : ''} ${s.udp ? 'udp' : ''}`.toLowerCase();
+    return searchStr.includes(filterText);
+  });
+
+  if (filtered.length === 0) {
+    if (emptyState) emptyState.style.display = 'block';
+    return;
+  }
+  if (emptyState) emptyState.style.display = 'none';
+
+  filtered.forEach(stream => {
+    const tr = document.createElement('tr');
+
+    let protoBadges = [];
+    if (stream.tcp) protoBadges.push(`<span class="badge badge-cyan">TCP</span>`);
+    if (stream.udp) protoBadges.push(`<span class="badge badge-violet">UDP</span>`);
+    if (protoBadges.length === 0) protoBadges.push(`<span class="badge badge-gray">None</span>`);
+
+    let sourceBadge = `<span class="badge badge-cyan" style="font-size: 0.7rem;">🐳 Docker</span>`;
+    if (stream.source === 'iac') {
+      sourceBadge = `<span class="badge badge-amber" style="font-size: 0.7rem;" title="IaC Manifest: ${escapeHtml(stream.source_file || 'routes.yaml')}">📄 IaC</span>`;
+    } else if (stream.source === 'pve') {
+      sourceBadge = `<span class="badge" style="background: rgba(249, 115, 22, 0.15); color: #f97316; font-size: 0.7rem;" title="Proxmox VE LXC">⚡ Proxmox</span>`;
+    } else if (stream.source === 'lxd') {
+      sourceBadge = `<span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #10b981; font-size: 0.7rem;" title="Canonical LXD / Incus">🐧 LXD/Incus</span>`;
+    }
+
+    const lastSyncTime = stream.last_synced ? new Date(stream.last_synced).toLocaleTimeString() : 'N/A';
+
+    tr.innerHTML = `
+      <td><span class="badge badge-emerald">● Live</span></td>
+      <td>
+        <span class="target-badge" style="font-family: var(--font-mono); font-weight: 700; color: #00f2fe;">
+          :${stream.incoming_port}
+        </span>
+      </td>
+      <td>
+        <span class="target-badge">
+          ${escapeHtml(stream.forwarding_host)}:${stream.forwarding_port}
+        </span>
+      </td>
+      <td><div style="display:flex; gap:0.25rem;">${protoBadges.join(' ')}</div></td>
+      <td>${sourceBadge}</td>
+      <td>
+        <div class="container-info">
+          <span class="container-title">${escapeHtml(stream.container_name || (stream.source === 'iac' ? 'IaC Manifest' : 'stream'))}</span>
+          <span class="container-sub">${escapeHtml(stream.source_file ? stream.source_file : (stream.container_id ? stream.container_id.substring(0, 12) : ''))}</span>
+        </div>
+      </td>
+      <td><span class="badge badge-gray" style="font-family: var(--font-mono); font-size: 0.75rem;">${escapeHtml(stream.host_id || 'local')}</span></td>
+      <td><span style="font-family: var(--font-mono); color: var(--text-muted);">#${stream.npm_stream_id}</span></td>
+      <td><span style="font-size: 0.8rem; color: var(--text-muted);">${lastSyncTime}</span></td>
+    `;
+    tbody.appendChild(tr);
+  });
 }
 
 // Render Proxies Table
@@ -243,6 +399,20 @@ function renderProxiesTable(filterText = '') {
     let sourceBadge = `<span class="badge badge-cyan" style="font-size: 0.7rem;">🐳 Docker</span>`;
     if (proxy.source === 'iac') {
       sourceBadge = `<span class="badge badge-amber" style="font-size: 0.7rem;" title="IaC Manifest: ${escapeHtml(proxy.source_file || 'routes.yaml')}">📄 IaC</span>`;
+    } else if (proxy.source === 'pve') {
+      sourceBadge = `<span class="badge" style="background: rgba(249, 115, 22, 0.15); color: #f97316; font-size: 0.7rem;" title="Proxmox VE LXC">⚡ Proxmox</span>`;
+    } else if (proxy.source === 'lxd') {
+      sourceBadge = `<span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #10b981; font-size: 0.7rem;" title="Canonical LXD / Incus">🐧 LXD/Incus</span>`;
+    }
+
+    let locationBadge = '';
+    if (proxy.locations && proxy.locations.length > 0) {
+      locationBadge = `<div style="margin-top: 4px;"><span class="badge" style="background: rgba(0, 242, 254, 0.12); color: #00f2fe; font-size: 0.7rem;" title="Custom Locations: ${proxy.locations.map(l => l.path).join(', ')}">📍 ${proxy.locations.length} Locations</span></div>`;
+    }
+
+    let replicaBadge = '';
+    if (proxy.upstream_replicas && proxy.upstream_replicas > 1) {
+      replicaBadge = `<div style="margin-top: 4px;"><span class="badge" style="background: rgba(16, 185, 129, 0.12); color: #10b981; font-size: 0.7rem;" title="Load-balanced across ${proxy.upstream_replicas} containers">⚖️ ${proxy.upstream_replicas} Replicas (${escapeHtml(proxy.upstream_balancing || 'round_robin')})</span></div>`;
     }
 
     tr.innerHTML = `
@@ -253,6 +423,8 @@ function renderProxiesTable(filterText = '') {
           <span class="scheme-tag">${escapeHtml(proxy.forward_scheme)}://</span>
           ${escapeHtml(proxy.forward_host)}:${proxy.forward_port}
         </span>
+        ${locationBadge}
+        ${replicaBadge}
       </td>
       <td>
         <div style="display: flex; flex-direction: column; gap: 0.2rem;">
@@ -265,7 +437,7 @@ function renderProxiesTable(filterText = '') {
       <td>
         <div class="container-info">
           <span class="container-title">${escapeHtml(proxy.container_name)}</span>
-          <span class="container-sub">${escapeHtml(proxy.image || (proxy.source_file ? 'manifest: ' + proxy.source_file : proxy.container_id.substring(0, 12)))}</span>
+          <span class="container-sub">${escapeHtml(proxy.image || (proxy.source_file ? 'manifest: ' + proxy.source_file : (proxy.container_id ? proxy.container_id.substring(0, 12) : '')))}</span>
         </div>
       </td>
       <td>${sslBadge}</td>
@@ -317,24 +489,48 @@ function renderContainersTable(filterText = '') {
       statusBadge = `<span class="badge badge-gray" title="${escapeHtml(c.ignored_reason || '')}">Ignored</span>`;
     }
 
+    let healthBadge = '';
+    if (c.health_status === 'healthy') {
+      healthBadge = `<span class="badge badge-emerald" style="font-size:0.7rem; margin-left:4px;" title="HealthCheck: Healthy">💚 healthy</span>`;
+    } else if (c.health_status === 'starting') {
+      healthBadge = `<span class="badge badge-amber" style="font-size:0.7rem; margin-left:4px;" title="HealthCheck: Warming Up (Held by Zero-502)">⏳ starting</span>`;
+    } else if (c.health_status === 'unhealthy') {
+      healthBadge = `<span class="badge badge-rose" style="font-size:0.7rem; margin-left:4px;" title="HealthCheck: Unhealthy">❌ unhealthy</span>`;
+    }
+
     const domainText = c.domains && c.domains.length > 0 ? c.domains.join(', ') : `<span class="text-muted">—</span>`;
     const portText = c.port ? c.port : `<span class="text-muted">—</span>`;
+
+    let sourceBadge = `<span class="badge badge-cyan" style="font-size:0.65rem;">Docker</span>`;
+    if (c.source === 'pve') {
+      sourceBadge = `<span class="badge" style="background: rgba(249, 115, 22, 0.15); color: #f97316; font-size:0.65rem;">Proxmox LXC</span>`;
+    } else if (c.source === 'lxd') {
+      sourceBadge = `<span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #10b981; font-size:0.65rem;">LXD / Incus</span>`;
+    }
+
+    const buttonLabel = c.source === 'pve' ? 'PVE Config' : (c.source === 'lxd' ? 'LXD Config' : 'Compose Labels');
 
     tr.innerHTML = `
       <td>
         <div class="container-info">
-          <span class="container-title">${escapeHtml(c.name)}</span>
+          <div style="display:flex; align-items:center; gap:0.4rem;">
+            <span class="container-title">${escapeHtml(c.name)}</span>
+            ${sourceBadge}
+          </div>
           <span class="container-sub">${escapeHtml(c.id)}</span>
         </div>
       </td>
       <td><span style="font-family: var(--font-mono); font-size: 0.8rem;">${escapeHtml(c.image)}</span></td>
-      <td><span class="badge ${c.state === 'running' ? 'badge-cyan' : 'badge-gray'}">${escapeHtml(c.state)}</span></td>
+      <td>
+        <span class="badge ${c.state === 'running' ? 'badge-cyan' : 'badge-gray'}">${escapeHtml(c.state)}</span>
+        ${healthBadge}
+      </td>
       <td>${statusBadge}</td>
       <td>${domainText}</td>
       <td>${portText}</td>
       <td>
         <button class="btn btn-secondary btn-sm" onclick="showGenerateLabelsModal('${escapeHtml(c.id)}')">
-          Compose Labels
+          ${buttonLabel}
         </button>
       </td>
     `;
@@ -459,6 +655,36 @@ function showProxyModal(domainKey) {
         </div>
       </div>
 
+      ${proxy.locations && proxy.locations.length > 0 ? `
+      <div>
+        <label class="text-muted" style="font-size: 0.75rem; text-transform: uppercase;">Custom Locations / Subpaths (${proxy.locations.length})</label>
+        <div style="display: flex; flex-direction: column; gap: 0.35rem; margin-top: 0.35rem;">
+          ${proxy.locations.map(loc => `
+            <div style="background: rgba(255,255,255,0.05); padding: 0.4rem 0.6rem; border-radius: 4px; font-size: 0.85rem; display: flex; justify-content: space-between; align-items: center;">
+              <div><strong>${escapeHtml(loc.path)}</strong> &rarr; <code>${escapeHtml(loc.forward_host)}:${loc.forward_port}</code></div>
+              <div style="font-size: 0.75rem; color: var(--text-muted);">${loc.websocket ? '⚡ websocket' : ''}</div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+      ` : ''}
+
+      ${proxy.upstream_replicas && proxy.upstream_replicas > 1 ? `
+      <div>
+        <label class="text-muted" style="font-size: 0.75rem; text-transform: uppercase;">Load Balanced Upstream</label>
+        <div style="margin-top: 0.25rem;">
+          <span class="badge badge-emerald">⚖️ ${proxy.upstream_replicas} Replicas</span>
+          <span class="badge badge-cyan">${escapeHtml(proxy.upstream_balancing || 'round_robin')}</span>
+          <code style="margin-left: 0.5rem;">upstream ${escapeHtml(proxy.upstream_name)}</code>
+        </div>
+        ${proxy.container_names && proxy.container_names.length > 0 ? `
+          <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.35rem;">
+            Containers: ${escapeHtml(proxy.container_names.join(', '))}
+          </div>
+        ` : ''}
+      </div>
+      ` : ''}
+
       <div class="code-snippet-wrap mt-3">
         <pre><code class="language-json">${escapeHtml(JSON.stringify(proxy, null, 2))}</code></pre>
       </div>
@@ -479,12 +705,66 @@ function showGenerateLabelsModal(containerID) {
   const domain = `${container.name}.local`;
   const port = container.port || 80;
 
-  title.textContent = `Compose Labels for "${container.name}"`;
-  content.innerHTML = `
-    <p class="text-muted mb-3">Copy and paste these labels into your <code>docker-compose.yml</code> to enable automated discovery:</p>
-    
-    <div class="code-snippet-wrap">
-      <pre><code>services:
+  if (container.source === 'pve') {
+    title.textContent = `Proxmox VE Auto-Discovery for "${container.name}"`;
+    const snippetTags = `npm.domain=${domain}, npm.port=${port}, npm.ssl.enabled=false`;
+    const snippetNotes = `npm.domain: ${domain}\nnpm.port: ${port}\nnpm.ssl.enabled: false\nnpm.websocket: true`;
+    content.innerHTML = `
+      <p class="text-muted mb-3">Add tags or notes to your Proxmox LXC container (VMID <code>${escapeHtml(container.id)}</code>) to enable automated discovery:</p>
+      
+      <label class="text-muted" style="font-size: 0.75rem; text-transform: uppercase; font-weight:600;">Channel A: Container Tags</label>
+      <div class="code-snippet-wrap mb-3">
+        <pre><code>${escapeHtml(snippetTags)}</code></pre>
+      </div>
+
+      <label class="text-muted" style="font-size: 0.75rem; text-transform: uppercase; font-weight:600;">Channel B: Container Notes (YAML/Key-Value)</label>
+      <div class="code-snippet-wrap">
+        <pre><code>${escapeHtml(snippetNotes)}</code></pre>
+      </div>
+
+      <button class="btn btn-primary mt-4" id="btn-copy-pve-snippet">
+        Copy Notes Snippet
+      </button>
+    `;
+
+    modal.style.display = 'flex';
+    document.getElementById('btn-copy-pve-snippet').onclick = () => {
+      copyRawSnippet(snippetNotes, 'Proxmox notes snippet copied to clipboard!');
+    };
+  } else if (container.source === 'lxd') {
+    title.textContent = `Canonical LXD / Incus Config for "${container.name}"`;
+    const snippetLXD = `lxc config set ${container.name} user.npm.domain="${domain}"
+lxc config set ${container.name} user.npm.port="${port}"
+lxc config set ${container.name} user.npm.ssl.enabled="false"`;
+    content.innerHTML = `
+      <p class="text-muted mb-3">Run these CLI commands on your host to attach metadata to your LXD / Incus container:</p>
+      
+      <div class="code-snippet-wrap">
+        <pre><code>${escapeHtml(snippetLXD)}</code></pre>
+      </div>
+
+      <button class="btn btn-primary mt-4" id="btn-copy-lxd-snippet">
+        Copy CLI Commands
+      </button>
+    `;
+
+    modal.style.display = 'flex';
+    document.getElementById('btn-copy-lxd-snippet').onclick = () => {
+      copyRawSnippet(snippetLXD, 'LXD CLI commands copied to clipboard!');
+    };
+  } else {
+    title.textContent = `Compose Labels for "${container.name}"`;
+    const snippet = `    labels:
+      - "npm.frontend.domain=${domain}"
+      - "npm.frontend.port=${port}"
+      - "npm.ssl.enabled=false"
+      - "npm.websocket=true"
+      - "npm.block_exploits=true"`;
+    content.innerHTML = `
+      <p class="text-muted mb-3">Copy and paste these labels into your <code>docker-compose.yml</code> to enable automated discovery:</p>
+      
+      <div class="code-snippet-wrap">
+        <pre><code>services:
   ${escapeHtml(container.name)}:
     # ...
     labels:
@@ -493,14 +773,21 @@ function showGenerateLabelsModal(containerID) {
       - "npm.ssl.enabled=false"
       - "npm.websocket=true"
       - "npm.block_exploits=true"</code></pre>
-    </div>
+      </div>
 
-    <button class="btn btn-primary mt-4" onclick="copySnippet('${domain}', ${port}, '${escapeHtml(container.name)}')">
-      Copy YAML Snippet
-    </button>
-  `;
+      <button class="btn btn-primary mt-4" onclick="copySnippet('${domain}', ${port}, '${escapeHtml(container.name)}')">
+        Copy YAML Snippet
+      </button>
+    `;
 
-  modal.style.display = 'flex';
+    modal.style.display = 'flex';
+  }
+}
+
+function copyRawSnippet(snippet, successMsg = 'Snippet copied to clipboard!') {
+  navigator.clipboard.writeText(snippet);
+  showToast(successMsg, 'success');
+  closeModal();
 }
 
 function copySnippet(domain, port, serviceName) {
@@ -544,4 +831,55 @@ function escapeHtml(str) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
+}
+
+// Docs & Setup Guides Subtab Switcher
+function initDocsSubtabs() {
+  document.querySelectorAll('.docs-subtab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const guideId = btn.getAttribute('data-guide');
+      document.querySelectorAll('.docs-subtab-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+
+      document.querySelectorAll('.docs-guide-pane').forEach(pane => {
+        pane.classList.toggle('active', pane.id === guideId);
+      });
+    });
+  });
+}
+
+// Docs Reference Table Real-Time Filter
+function initDocsSearch() {
+  const input = document.getElementById('docs-search');
+  if (!input) return;
+
+  input.addEventListener('input', (e) => {
+    const query = e.target.value.toLowerCase().trim();
+    const rows = document.querySelectorAll('#docs-reference-table tbody tr');
+
+    rows.forEach(row => {
+      if (row.classList.contains('docs-category-header')) {
+        row.style.display = query === '' ? '' : 'table-row';
+        return;
+      }
+
+      const text = row.textContent.toLowerCase();
+      if (!query || text.includes(query)) {
+        row.style.display = '';
+      } else {
+        row.style.display = 'none';
+      }
+    });
+  });
+}
+
+// Copy Code from Guide Snippet
+function copyDocsGuideCode(paneId, toastMsg) {
+  const pane = document.getElementById(paneId);
+  if (!pane) return;
+  const codeEl = pane.querySelector('code');
+  if (!codeEl) return;
+
+  navigator.clipboard.writeText(codeEl.textContent.trim());
+  showToast(toastMsg || 'Configuration snippet copied to clipboard!', 'success');
 }

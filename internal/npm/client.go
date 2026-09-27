@@ -292,6 +292,97 @@ func (c *Client) DeleteProxyHost(ctx context.Context, id int) error {
 	return nil
 }
 
+// GetStreams retrieves all configured streams from NPM.
+func (c *Client) GetStreams(ctx context.Context) ([]Stream, error) {
+	resp, err := c.doRequest(ctx, http.MethodGet, "/api/nginx/streams", nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("failed to fetch streams (%d): %s", resp.StatusCode, string(body))
+	}
+
+	var streams []Stream
+	if err := json.NewDecoder(resp.Body).Decode(&streams); err != nil {
+		return nil, fmt.Errorf("failed to decode streams: %w", err)
+	}
+
+	return streams, nil
+}
+
+// CreateStream creates a new stream record in NPM.
+func (c *Client) CreateStream(ctx context.Context, streamReq *StreamRequest) (*Stream, error) {
+	data, err := json.Marshal(streamReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal create stream payload: %w", err)
+	}
+
+	resp, err := c.doRequest(ctx, http.MethodPost, "/api/nginx/streams", data)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		return nil, fmt.Errorf("create stream failed (%d): %s", resp.StatusCode, string(body))
+	}
+
+	var created Stream
+	if err := json.Unmarshal(body, &created); err != nil {
+		return nil, fmt.Errorf("failed to decode created stream: %w", err)
+	}
+
+	return &created, nil
+}
+
+// UpdateStream updates an existing stream record in NPM.
+func (c *Client) UpdateStream(ctx context.Context, id int, streamReq *StreamRequest) (*Stream, error) {
+	data, err := json.Marshal(streamReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal update stream payload: %w", err)
+	}
+
+	path := fmt.Sprintf("/api/nginx/streams/%d", id)
+	resp, err := c.doRequest(ctx, http.MethodPut, path, data)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("update stream %d failed (%d): %s", id, resp.StatusCode, string(body))
+	}
+
+	var updated Stream
+	if err := json.Unmarshal(body, &updated); err != nil {
+		return nil, fmt.Errorf("failed to decode updated stream: %w", err)
+	}
+
+	return &updated, nil
+}
+
+// DeleteStream removes a stream record from NPM.
+func (c *Client) DeleteStream(ctx context.Context, id int) error {
+	path := fmt.Sprintf("/api/nginx/streams/%d", id)
+	resp, err := c.doRequest(ctx, http.MethodDelete, path, nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("delete stream %d failed (%d): %s", id, resp.StatusCode, string(body))
+	}
+
+	return nil
+}
+
 // Status returns current connection status and health info.
 func (c *Client) Status() (connected bool, lastError string, baseURL string) {
 	c.mu.RLock()

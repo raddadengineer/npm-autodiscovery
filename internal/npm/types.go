@@ -31,6 +31,15 @@ func (fb *FlexBool) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// ProxyHostLocation represents a custom location path route within a proxy host.
+type ProxyHostLocation struct {
+	Path           string `json:"path"`
+	ForwardScheme  string `json:"forward_scheme"`
+	ForwardHost    string `json:"forward_host"`
+	ForwardPort    int    `json:"forward_port"`
+	AdvancedConfig string `json:"advanced_config,omitempty"`
+}
+
 // ProxyHost represents an existing proxy host record in Nginx Proxy Manager.
 type ProxyHost struct {
 	ID                    int                    `json:"id"`
@@ -50,6 +59,7 @@ type ProxyHost struct {
 	HSTSEnabled           FlexBool               `json:"hsts_enabled"`
 	HSTSSubdomains        FlexBool               `json:"hsts_subdomains"`
 	AdvancedConfig        string                 `json:"advanced_config"`
+	Locations             []ProxyHostLocation    `json:"locations,omitempty"`
 	AccessListID          interface{}            `json:"access_list_id"`
 	Meta                  map[string]interface{} `json:"meta"`
 	Enabled               FlexBool               `json:"enabled"`
@@ -70,8 +80,34 @@ type ProxyHostRequest struct {
 	BlockExploits         bool                   `json:"block_exploits"`
 	HTTP2Support          bool                   `json:"http2_support"`
 	AdvancedConfig        string                 `json:"advanced_config"`
+	Locations             []ProxyHostLocation    `json:"locations,omitempty"`
 	AccessListID          string                 `json:"access_list_id"`
 	Meta                  map[string]interface{} `json:"meta"`
+}
+
+// Stream represents an existing Layer 4 TCP/UDP stream record in Nginx Proxy Manager.
+type Stream struct {
+	ID             int                    `json:"id"`
+	CreatedOn      string                 `json:"created_on"`
+	ModifiedOn     string                 `json:"modified_on"`
+	OwnerUserID    int                    `json:"owner_user_id"`
+	IncomingPort   int                    `json:"incoming_port"`
+	ForwardingHost string                 `json:"forwarding_host"`
+	ForwardingPort int                    `json:"forwarding_port"`
+	TCPForwarding  FlexBool               `json:"tcp_forwarding"`
+	UDPForwarding  FlexBool               `json:"udp_forwarding"`
+	Meta           map[string]interface{} `json:"meta"`
+	Enabled        FlexBool               `json:"enabled"`
+}
+
+// StreamRequest represents the payload to create or update a stream in NPM.
+type StreamRequest struct {
+	IncomingPort   int                    `json:"incoming_port"`
+	ForwardingHost string                 `json:"forwarding_host"`
+	ForwardingPort int                    `json:"forwarding_port"`
+	TCPForwarding  bool                   `json:"tcp_forwarding"`
+	UDPForwarding  bool                   `json:"udp_forwarding"`
+	Meta           map[string]interface{} `json:"meta"`
 }
 
 // APIError represents error responses returned by NPM.

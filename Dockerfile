@@ -3,7 +3,10 @@
 # ==============================================================================
 
 # Stage 1: Build binary
-FROM golang:1.26-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS builder
+
+ARG TARGETOS
+ARG TARGETARCH
 
 WORKDIR /build
 
@@ -16,7 +19,7 @@ COPY go.mod ./
 COPY . .
 
 # Statically compile single binary with stripped symbols for minimal footprint
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o npm-autodiscovery ./cmd/agent
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build -ldflags="-s -w" -o npm-autodiscovery ./cmd/agent
 
 # Stage 2: Minimal runtime image
 FROM alpine:3.20

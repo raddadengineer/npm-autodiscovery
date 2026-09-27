@@ -26,7 +26,7 @@
         </div>
         <div class="brand-text">
           <h1>NPM Auto-Discovery</h1>
-          <span class="badge version-badge">v1.0.0</span>
+          <span class="badge version-badge">v2.0.0</span>
         </div>
       </div>
 
@@ -50,6 +50,23 @@
           <span class="status-label">NPM API:</span>
           <span class="status-val" id="npm-status-text">Connecting...</span>
         </div>
+        <div class="status-pill" id="pve-status-pill" title="Proxmox VE LXC Hypervisor Connection">
+          <span class="status-dot ping-dot"></span>
+          <span class="status-label">Proxmox:</span>
+          <span class="status-val" id="pve-status-text">Disabled</span>
+        </div>
+        <div class="status-pill" id="lxd-status-pill" title="Canonical LXD / Incus Socket Connection">
+          <span class="status-dot ping-dot"></span>
+          <span class="status-label">LXD/Incus:</span>
+          <span class="status-val" id="lxd-status-text">Disabled</span>
+        </div>
+        <a href="/metrics" target="_blank" class="status-pill metrics-link-pill" title="Prometheus Observability Metrics Endpoint" style="text-decoration:none; color:inherit; cursor:pointer;">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#00f2fe" stroke-width="2">
+            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+          </svg>
+          <span class="status-label">Prometheus:</span>
+          <span class="status-val" style="color:#00f2fe;">/metrics</span>
+        </a>
         
         <button id="sync-now-btn" class="btn btn-primary" title="Trigger full container scan and NPM sync">
           <svg class="btn-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -86,6 +103,22 @@
 
         <div class="metric-card glass-panel">
           <div class="metric-header">
+            <span class="metric-title">Active Streams (L4)</span>
+            <div class="metric-icon-wrap icon-cyan">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="16 18 22 12 16 6"></polyline>
+                <polyline points="8 6 2 12 8 18"></polyline>
+              </svg>
+            </div>
+          </div>
+          <div class="metric-value" id="active-streams-count">0</div>
+          <div class="metric-footer">
+            <span class="metric-subtext">TCP / UDP Streams</span>
+          </div>
+        </div>
+
+        <div class="metric-card glass-panel">
+          <div class="metric-header">
             <span class="metric-title">Docker Containers</span>
             <div class="metric-icon-wrap icon-emerald">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -98,6 +131,37 @@
           <div class="metric-value" id="running-containers-count">0</div>
           <div class="metric-footer">
             <span class="metric-subtext" id="docker-version-text">Docker Daemon</span>
+          </div>
+        </div>
+
+        <div class="metric-card glass-panel">
+          <div class="metric-header">
+            <span class="metric-title">Proxmox VE LXC</span>
+            <div class="metric-icon-wrap" style="background: rgba(255, 111, 0, 0.15); color: #ff8f00;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+              </svg>
+            </div>
+          </div>
+          <div class="metric-value" id="pve-containers-count">0</div>
+          <div class="metric-footer">
+            <span class="metric-subtext" id="pve-status-detail">Proxmox API</span>
+          </div>
+        </div>
+
+        <div class="metric-card glass-panel">
+          <div class="metric-header">
+            <span class="metric-title">Canonical LXD / Incus</span>
+            <div class="metric-icon-wrap" style="background: rgba(16, 185, 129, 0.15); color: #10b981;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
+                <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
+              </svg>
+            </div>
+          </div>
+          <div class="metric-value" id="lxd-containers-count">0</div>
+          <div class="metric-footer">
+            <span class="metric-subtext" id="lxd-status-detail">Unix Socket</span>
           </div>
         </div>
 
@@ -143,6 +207,15 @@
           </svg>
           <span>Active Proxies</span>
           <span class="tab-counter" id="tab-proxies-count">0</span>
+        </button>
+
+        <button class="tab-btn" data-tab="streams-view">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="16 18 22 12 16 6"></polyline>
+            <polyline points="8 6 2 12 8 18"></polyline>
+          </svg>
+          <span>L4 Streams</span>
+          <span class="tab-counter" id="tab-streams-count">0</span>
         </button>
 
         <button class="tab-btn" data-tab="events-view">
@@ -234,6 +307,63 @@
         </div>
       </section>
 
+      <!-- TAB: Layer 4 Streams View -->
+      <section id="streams-view" class="tab-content">
+        <div class="panel glass-panel">
+          <div class="panel-header">
+            <div class="panel-title-group">
+              <h2>Layer 4 Streams (TCP / UDP)</h2>
+              <p class="panel-subtitle">Raw TCP and UDP stream routing synchronized with Nginx Proxy Manager stream proxies.</p>
+            </div>
+            
+            <div class="panel-actions">
+              <div class="search-input-wrap">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="11" cy="11" r="8"></circle>
+                  <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                </svg>
+                <input type="text" id="streams-search" placeholder="Search port, target, protocol..." />
+              </div>
+            </div>
+          </div>
+
+          <div class="table-responsive">
+            <table class="data-table" id="streams-table">
+              <thead>
+                <tr>
+                  <th>Status</th>
+                  <th>Incoming Port</th>
+                  <th>Forward Target</th>
+                  <th>Protocols</th>
+                  <th>Source</th>
+                  <th>Container / Service</th>
+                  <th>Node / Host</th>
+                  <th>NPM Stream ID</th>
+                  <th>Last Synced</th>
+                </tr>
+              </thead>
+              <tbody id="streams-tbody">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Empty State -->
+          <div class="empty-state" id="streams-empty" style="display: none;">
+            <div class="empty-icon">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="8" x2="12" y2="12"></line>
+                <line x1="12" y1="16" x2="12.01" y2="16"></line>
+              </svg>
+            </div>
+            <h3>No Layer 4 streams configured</h3>
+            <p>Add labels like <code>npm.stream.port=25565</code> or define <code>streams:</code> in your IaC <code>routes.yaml</code> manifest.</p>
+            <button class="btn btn-secondary mt-3" onclick="switchTab('docs-view')">View Streams Cheatsheet</button>
+          </div>
+        </div>
+      </section>
+
       <!-- TAB 2: Live Event Log -->
       <section id="events-view" class="tab-content">
         <div class="panel glass-panel">
@@ -305,55 +435,68 @@
         </div>
       </section>
 
-      <!-- TAB 4: Label Reference & Docs -->
+      <!-- TAB 4: Label Reference & Setup -->
       <section id="docs-view" class="tab-content">
         <div class="docs-grid">
+          
+          <!-- LEFT PANEL: Comprehensive Label & Metadata Reference -->
           <div class="panel glass-panel">
-            <div class="panel-header">
-              <h2>Supported Container Labels</h2>
+            <div class="panel-header" style="flex-wrap: wrap; gap: 0.75rem; align-items: flex-start;">
+              <div>
+                <h2>Supported Labels & Provider Metadata</h2>
+                <p class="text-muted" style="margin-top: 0.25rem; font-size: 0.85rem;">
+                  Complete v2.0 reference for Docker labels, Proxmox VE tags/notes, LXD/Incus metadata, and environment variables.
+                </p>
+              </div>
+              <div style="display: flex; gap: 0.5rem; align-items: center; width: 100%; max-width: 320px;">
+                <input type="text" id="docs-search" class="search-input" placeholder="Filter labels, tags, or settings..." style="width: 100%;">
+              </div>
             </div>
-            <p class="mb-4 text-muted">Attach these labels in your <code>docker-compose.yml</code> or <code>docker run</code> commands to configure automatic proxying:</p>
             
-            <div class="table-responsive">
-              <table class="docs-table">
+            <div class="table-responsive" style="max-height: 720px; overflow-y: auto;">
+              <table class="docs-table" id="docs-reference-table">
                 <thead>
                   <tr>
-                    <th>Label</th>
+                    <th>Key / Label</th>
                     <th>Type</th>
                     <th>Default</th>
                     <th>Description</th>
                   </tr>
                 </thead>
                 <tbody>
-                  <tr>
-                    <td><code>npm.frontend.domain</code></td>
-                    <td><span class="type-tag">string</span></td>
-                    <td><em>Required</em></td>
-                    <td>Domain name(s) for the proxy host. Multiple domains can be comma-separated: <code>app.example.com, web.example.com</code></td>
+                  <!-- 1. Core Ingress & SSL -->
+                  <tr class="docs-category-header">
+                    <td colspan="4">🌐 Core Docker Ingress & SSL Labels</td>
                   </tr>
                   <tr>
-                    <td><code>npm.frontend.port</code></td>
+                    <td><code>npm.frontend.domain</code><br><span class="text-muted" style="font-size:0.75rem;">alias: <code>npm.domain</code></span></td>
+                    <td><span class="type-tag">string</span></td>
+                    <td><em>Required</em></td>
+                    <td>Domain name(s) for the proxy host. Supports comma-separated lists: <code>app.example.com, web.example.com</code>.</td>
+                  </tr>
+                  <tr>
+                    <td><code>npm.frontend.port</code><br><span class="text-muted" style="font-size:0.75rem;">alias: <code>npm.port</code></span></td>
                     <td><span class="type-tag">int</span></td>
                     <td>Auto-detected</td>
-                    <td>Internal container port to route traffic to (e.g., <code>80</code>, <code>3000</code>, <code>8080</code>).</td>
+                    <td>Internal container port to route traffic to (e.g. <code>80</code>, <code>3000</code>, <code>8080</code>). Auto-detects if container exposes a single port.</td>
                   </tr>
                   <tr>
                     <td><code>npm.ssl.enabled</code></td>
                     <td><span class="type-tag">bool</span></td>
                     <td><code>false</code></td>
-                    <td>Enable SSL for this proxy host. (Matches <code>DEFAULT_SSL_ENABLED</code>)</td>
+                    <td>Enable SSL for this proxy host (matches <code>DEFAULT_SSL_ENABLED</code>).</td>
                   </tr>
                   <tr>
                     <td><code>npm.ssl.forced</code></td>
                     <td><span class="type-tag">bool</span></td>
                     <td><code>false</code></td>
-                    <td>Force HTTP to HTTPS redirect.</td>
+                    <td>Force automatic HTTP to HTTPS redirection (matches <code>DEFAULT_SSL_FORCED</code>).</td>
                   </tr>
                   <tr>
                     <td><code>npm.forward_scheme</code></td>
                     <td><span class="type-tag">string</span></td>
                     <td><code>http</code></td>
-                    <td>Forward scheme: <code>http</code> or <code>https</code>.</td>
+                    <td>Forwarding scheme to upstream target: <code>http</code> or <code>https</code>.</td>
                   </tr>
                   <tr>
                     <td><code>npm.forward_host</code></td>
@@ -365,81 +508,585 @@
                     <td><code>npm.certificate_id</code></td>
                     <td><span class="type-tag">int / string</span></td>
                     <td><code>0</code></td>
-                    <td>Existing NPM Certificate ID (e.g. <code>1</code>) or <code>"new"</code> to request Let's Encrypt.</td>
+                    <td>Existing NPM Certificate ID (e.g. <code>1</code>) or <code>"new"</code> to request automated Let's Encrypt issuance.</td>
                   </tr>
                   <tr>
                     <td><code>npm.websocket</code></td>
                     <td><span class="type-tag">bool</span></td>
                     <td><code>true</code></td>
-                    <td>Allow WebSocket Upgrade headers (essential for socket.io, modern SPAs).</td>
+                    <td>Allow WebSocket Upgrade headers (<code>proxy_set_header Upgrade $http_upgrade</code>).</td>
                   </tr>
                   <tr>
                     <td><code>npm.block_exploits</code></td>
                     <td><span class="type-tag">bool</span></td>
                     <td><code>true</code></td>
-                    <td>Enable NPM's exploit blocking filters.</td>
+                    <td>Enable Nginx Proxy Manager's exploit and malicious payload blocking filters.</td>
                   </tr>
                   <tr>
                     <td><code>npm.caching</code></td>
                     <td><span class="type-tag">bool</span></td>
                     <td><code>false</code></td>
-                    <td>Enable Nginx asset caching.</td>
+                    <td>Enable Nginx static asset caching.</td>
                   </tr>
                   <tr>
                     <td><code>npm.hsts</code></td>
                     <td><span class="type-tag">bool</span></td>
                     <td><code>false</code></td>
-                    <td>Enable HTTP Strict Transport Security (HSTS).</td>
+                    <td>Enable HTTP Strict Transport Security (HSTS) with subdomains enabled.</td>
+                  </tr>
+                  <tr>
+                    <td><code>npm.http2</code></td>
+                    <td><span class="type-tag">bool</span></td>
+                    <td><code>false</code></td>
+                    <td>Enable HTTP/2 protocol support on SSL listeners.</td>
                   </tr>
                   <tr>
                     <td><code>npm.enabled</code></td>
                     <td><span class="type-tag">bool</span></td>
                     <td><code>true</code></td>
-                    <td>Explicitly enable or disable discovery for this container (<code>true</code> or <code>false</code>).</td>
+                    <td>Explicitly enable or disable discovery for this container (<code>false</code> completely ignores container).</td>
                   </tr>
                   <tr>
                     <td><code>npm.advanced_config</code></td>
                     <td><span class="type-tag">string</span></td>
                     <td><code>""</code></td>
-                    <td>Custom Nginx directives inserted directly into the server block.</td>
+                    <td>Raw custom Nginx directives inserted directly into the generated server block.</td>
+                  </tr>
+
+                  <!-- 2. Zero-502 HealthCheck Routing -->
+                  <tr class="docs-category-header">
+                    <td colspan="4">🛡️ Zero-502 HealthCheck-Aware Routing</td>
+                  </tr>
+                  <tr>
+                    <td><code>npm.healthcheck.enabled</code></td>
+                    <td><span class="type-tag">bool</span></td>
+                    <td><code>false</code></td>
+                    <td>Hold traffic in a pending queue while container warms up (Docker <code>starting</code> state). Ingress activates only upon <code>healthy</code>.</td>
+                  </tr>
+                  <tr>
+                    <td><code>npm.healthcheck.timeout</code></td>
+                    <td><span class="type-tag">duration</span></td>
+                    <td><code>60s</code></td>
+                    <td>Maximum wait time for Docker healthcheck to report healthy before fallback triggers (e.g. <code>45s</code>, <code>2m</code>).</td>
+                  </tr>
+                  <tr>
+                    <td><code>npm.healthcheck.fallback_action</code></td>
+                    <td><span class="type-tag">string</span></td>
+                    <td><code>disable</code></td>
+                    <td>Action on unhealthy or timeout: <code>disable</code> (hold ingress), <code>keep</code> (route anyway), or <code>redirect</code>.</td>
+                  </tr>
+                  <tr>
+                    <td><code>npm.healthcheck.redirect_target</code></td>
+                    <td><span class="type-tag">string</span></td>
+                    <td><code>""</code></td>
+                    <td>Custom 503 maintenance page or fallback URL when fallback action is set to <code>redirect</code>.</td>
+                  </tr>
+
+                  <!-- 3. Declarative Middlewares -->
+                  <tr class="docs-category-header">
+                    <td colspan="4">🔧 Declarative Nginx Middlewares Engine</td>
+                  </tr>
+                  <tr>
+                    <td><code>npm.middleware.strip_prefix</code></td>
+                    <td><span class="type-tag">string</span></td>
+                    <td><code>""</code></td>
+                    <td>Strip URL prefix before forwarding upstream (e.g. <code>/api</code> rewrites to <code>/</code>).</td>
+                  </tr>
+                  <tr>
+                    <td><code>npm.middleware.ip_whitelist</code></td>
+                    <td><span class="type-tag">string</span></td>
+                    <td><code>""</code></td>
+                    <td>Comma-separated CIDR allowlist (e.g. <code>192.168.1.0/24, 10.0.0.0/8, 172.16.0.5</code>). Denies all others.</td>
+                  </tr>
+                  <tr>
+                    <td><code>npm.middleware.rate_limit</code></td>
+                    <td><span class="type-tag">string</span></td>
+                    <td><code>""</code></td>
+                    <td>Token-bucket rate limit (e.g. <code>10r/s</code>, <code>60r/m</code>). Enforces DDoS and brute-force protection.</td>
+                  </tr>
+                  <tr>
+                    <td><code>npm.middleware.rate_burst</code></td>
+                    <td><span class="type-tag">int</span></td>
+                    <td><code>10</code></td>
+                    <td>Maximum burst limit for token-bucket rate limiter.</td>
+                  </tr>
+                  <tr>
+                    <td><code>npm.middleware.cors</code></td>
+                    <td><span class="type-tag">bool</span></td>
+                    <td><code>false</code></td>
+                    <td>Automated CORS preflight (OPTIONS 204) and response header injection (Access-Control-Allow-Origin).</td>
+                  </tr>
+                  <tr>
+                    <td><code>npm.middleware.security_headers</code></td>
+                    <td><span class="type-tag">bool</span></td>
+                    <td><code>false</code></td>
+                    <td>Enterprise security headers (SAMEORIGIN, nosniff, XSS protection, Referrer-Policy).</td>
+                  </tr>
+
+                  <!-- 4. Custom Locations & Subpaths -->
+                  <tr class="docs-category-header">
+                    <td colspan="4">📍 Microservice Subpaths & Custom Locations</td>
+                  </tr>
+                  <tr>
+                    <td><code>npm.frontend.path</code></td>
+                    <td><span class="type-tag">string</span></td>
+                    <td><code>/</code></td>
+                    <td>Subpath mount point under domain (e.g. <code>/api</code>, <code>/auth</code>, <code>/ws</code>). Multiple containers sharing domain aggregate automatically!</td>
+                  </tr>
+                  <tr>
+                    <td><code>npm.location.&lt;path&gt;.forward_host</code></td>
+                    <td><span class="type-tag">string</span></td>
+                    <td>auto</td>
+                    <td>Explicit forward target host override for subpath <code>&lt;path&gt;</code>.</td>
+                  </tr>
+                  <tr>
+                    <td><code>npm.location.&lt;path&gt;.forward_port</code></td>
+                    <td><span class="type-tag">int</span></td>
+                    <td>auto</td>
+                    <td>Explicit forward target port override for subpath <code>&lt;path&gt;</code>.</td>
+                  </tr>
+                  <tr>
+                    <td><code>npm.location.&lt;path&gt;.strip_prefix</code></td>
+                    <td><span class="type-tag">bool</span></td>
+                    <td><code>false</code></td>
+                    <td>Strip subpath prefix before routing upstream for this location block.</td>
+                  </tr>
+
+                  <!-- 5. Upstream Load Balancing -->
+                  <tr class="docs-category-header">
+                    <td colspan="4">⚖️ Dynamic Upstream Load Balancing</td>
+                  </tr>
+                  <tr>
+                    <td><code>npm.upstream.balance</code></td>
+                    <td><span class="type-tag">string</span></td>
+                    <td><code>round_robin</code></td>
+                    <td>Balancing algorithm for horizontally scaled replicas: <code>round_robin</code>, <code>least_conn</code>, or <code>ip_hash</code>.</td>
+                  </tr>
+                  <tr>
+                    <td><code>npm.upstream.fail_timeout</code></td>
+                    <td><span class="type-tag">duration</span></td>
+                    <td><code>10s</code></td>
+                    <td>Nginx upstream <code>fail_timeout</code> directive for peer recovery window.</td>
+                  </tr>
+                  <tr>
+                    <td><code>npm.upstream.max_fails</code></td>
+                    <td><span class="type-tag">int</span></td>
+                    <td><code>3</code></td>
+                    <td>Nginx upstream <code>max_fails</code> counter before marking healthy peer down.</td>
+                  </tr>
+
+                  <!-- 6. Layer 4 Streams -->
+                  <tr class="docs-category-header">
+                    <td colspan="4">🎮 Layer 4 TCP / UDP Streams</td>
+                  </tr>
+                  <tr>
+                    <td><code>npm.stream.port</code><br><span class="text-muted" style="font-size:0.75rem;">alias: <code>npm.stream.incoming_port</code></span></td>
+                    <td><span class="type-tag">int</span></td>
+                    <td><em>Required</em></td>
+                    <td>Public port for NPM to listen on for Layer 4 stream proxying (e.g. <code>25565</code>, <code>5432</code>, <code>53</code>).</td>
+                  </tr>
+                  <tr>
+                    <td><code>npm.stream.forward_port</code></td>
+                    <td><span class="type-tag">int</span></td>
+                    <td>auto</td>
+                    <td>Target port on container. Defaults to incoming stream port if omitted.</td>
+                  </tr>
+                  <tr>
+                    <td><code>npm.stream.tcp</code></td>
+                    <td><span class="type-tag">bool</span></td>
+                    <td><code>true</code></td>
+                    <td>Enable TCP stream proxying.</td>
+                  </tr>
+                  <tr>
+                    <td><code>npm.stream.udp</code></td>
+                    <td><span class="type-tag">bool</span></td>
+                    <td><code>false</code></td>
+                    <td>Enable UDP stream proxying (e.g. DNS, gaming, voice).</td>
+                  </tr>
+
+                  <!-- 7. Proxmox VE (PVE) LXC Metadata -->
+                  <tr class="docs-category-header">
+                    <td colspan="4">⚡ Proxmox VE (PVE) LXC Tags & Notes</td>
+                  </tr>
+                  <tr>
+                    <td><code>npm.domain=...</code></td>
+                    <td><span class="type-tag">PVE Tag</span></td>
+                    <td>—</td>
+                    <td>Add to LXC Tags in Proxmox Web GUI: <code>npm.domain=app.lan, npm.port=80, npm.ssl=true</code>.</td>
+                  </tr>
+                  <tr>
+                    <td><code>npm.stream.port=...</code></td>
+                    <td><span class="type-tag">PVE Tag</span></td>
+                    <td>—</td>
+                    <td>Add to LXC Tags for Layer 4 stream: <code>npm.stream.port=5432, npm.stream.tcp=true</code>.</td>
+                  </tr>
+                  <tr>
+                    <td><code>npm.domain: ...</code></td>
+                    <td><span class="type-tag">PVE Notes</span></td>
+                    <td>—</td>
+                    <td>Paste YAML block into LXC Notes textarea: <code>npm.domain: app.lan</code>, <code>npm.port: 8080</code>.</td>
+                  </tr>
+
+                  <!-- 8. Canonical LXD / Incus Metadata -->
+                  <tr class="docs-category-header">
+                    <td colspan="4">🐧 Canonical LXD / Incus User Metadata</td>
+                  </tr>
+                  <tr>
+                    <td><code>user.npm.domain</code></td>
+                    <td><span class="type-tag">LXD Meta</span></td>
+                    <td>—</td>
+                    <td>Set via CLI: <code>incus config set &lt;instance&gt; user.npm.domain "app.lan"</code>.</td>
+                  </tr>
+                  <tr>
+                    <td><code>user.npm.port</code></td>
+                    <td><span class="type-tag">LXD Meta</span></td>
+                    <td>—</td>
+                    <td>Set target port: <code>incus config set &lt;instance&gt; user.npm.port "8080"</code>.</td>
+                  </tr>
+                  <tr>
+                    <td><code>user.npm.ssl</code></td>
+                    <td><span class="type-tag">LXD Meta</span></td>
+                    <td><code>false</code></td>
+                    <td>Enable SSL: <code>incus config set &lt;instance&gt; user.npm.ssl "true"</code>.</td>
+                  </tr>
+                  <tr>
+                    <td><code>user.npm.stream.port</code></td>
+                    <td><span class="type-tag">LXD Meta</span></td>
+                    <td>—</td>
+                    <td>Layer 4 stream port: <code>incus config set &lt;instance&gt; user.npm.stream.port "25565"</code>.</td>
+                  </tr>
+
+                  <!-- 9. Environment Variables -->
+                  <tr class="docs-category-header">
+                    <td colspan="4">⚙️ Daemon Environment Variables</td>
+                  </tr>
+                  <tr>
+                    <td><code>NPM_URL</code></td>
+                    <td><span class="type-tag">URL</span></td>
+                    <td><code>http://127.0.0.1:81</code></td>
+                    <td>URL of Nginx Proxy Manager admin UI and REST API.</td>
+                  </tr>
+                  <tr>
+                    <td><code>NPM_USER</code> / <code>NPM_PASS</code></td>
+                    <td><span class="type-tag">string</span></td>
+                    <td><code>admin@example.com</code></td>
+                    <td>NPM administrator email address and password.</td>
+                  </tr>
+                  <tr>
+                    <td><code>HOST_ID</code></td>
+                    <td><span class="type-tag">string</span></td>
+                    <td>Hostname</td>
+                    <td>Unique cluster node identifier (e.g. <code>worker-01</code>). Prevents multi-host route collision.</td>
+                  </tr>
+                  <tr>
+                    <td><code>HOST_IP</code></td>
+                    <td><span class="type-tag">string</span></td>
+                    <td><code>""</code></td>
+                    <td>Public/LAN IP of this Docker host when NPM is located on another machine.</td>
+                  </tr>
+                  <tr>
+                    <td><code>USE_HOST_PORT</code></td>
+                    <td><span class="type-tag">bool</span></td>
+                    <td><code>false</code></td>
+                    <td>When <code>HOST_IP</code> is set, routes traffic to container's published host port.</td>
+                  </tr>
+                  <tr>
+                    <td><code>PVE_ENABLED</code></td>
+                    <td><span class="type-tag">bool</span></td>
+                    <td><code>false</code></td>
+                    <td>Enable Proxmox VE (PVE) LXC container auto-discovery.</td>
+                  </tr>
+                  <tr>
+                    <td><code>PVE_URL</code> / <code>PVE_TOKEN_ID</code></td>
+                    <td><span class="type-tag">string</span></td>
+                    <td><code>""</code></td>
+                    <td>Proxmox API endpoint (e.g. <code>https://192.168.1.30:8006</code>) and API Token ID.</td>
+                  </tr>
+                  <tr>
+                    <td><code>LXD_ENABLED</code></td>
+                    <td><span class="type-tag">bool</span></td>
+                    <td><code>false</code></td>
+                    <td>Enable Canonical LXD / LinuxContainers Incus auto-discovery.</td>
+                  </tr>
+                  <tr>
+                    <td><code>LXD_SOCKET</code></td>
+                    <td><span class="type-tag">path</span></td>
+                    <td><code>/var/snap/lxd/...</code></td>
+                    <td>Path to LXD or Incus Unix domain socket.</td>
+                  </tr>
+                  <tr>
+                    <td><code>ROUTES_FILE</code> / <code>ROUTES_DIR</code></td>
+                    <td><span class="type-tag">path</span></td>
+                    <td><code>""</code></td>
+                    <td>Declarative YAML file or directory of static route manifests (`routes.yaml`).</td>
                   </tr>
                 </tbody>
               </table>
             </div>
           </div>
 
+          <!-- RIGHT PANEL: Interactive Setup Guides & Production Configurations -->
           <div class="panel glass-panel">
             <div class="panel-header">
-              <h2>Quick Example: Docker Compose</h2>
+              <h2>Setup Guides & Quickstarts</h2>
             </div>
-            <p class="mb-3 text-muted">Example service showing automatic proxy registration:</p>
             
-            <div class="code-snippet-wrap">
-              <pre><code class="language-yaml">version: '3.8'
+            <!-- Guide Sub-tabs -->
+            <div class="docs-subtabs">
+              <button class="docs-subtab-btn active" data-guide="docker-compose-guide">
+                🐳 Docker Compose
+              </button>
+              <button class="docs-subtab-btn" data-guide="pve-guide">
+                ⚡ Proxmox VE LXC
+              </button>
+              <button class="docs-subtab-btn" data-guide="lxd-guide">
+                🐧 LXD / Incus
+              </button>
+              <button class="docs-subtab-btn" data-guide="iac-guide">
+                📄 Static IaC File
+              </button>
+              <button class="docs-subtab-btn" data-guide="standalone-guide">
+                🌐 Standalone Agent
+              </button>
+            </div>
+
+            <!-- PANE 1: Docker Compose -->
+            <div class="docs-guide-pane active" id="docker-compose-guide">
+              <p class="mb-3 text-muted">Complete production stack: Nginx Proxy Manager, Auto-Discovery Sidecar, HealthChecked microservice with middlewares, and L4 stream:</p>
+              
+              <div class="code-snippet-wrap mb-3">
+                <pre><code class="language-yaml">version: '3.8'
 
 services:
-  my-web-app:
-    image: nginx:alpine
-    container_name: my-web-app
+  # 1. Nginx Proxy Manager
+  npm:
+    image: 'jc21/nginx-proxy-manager:latest'
+    container_name: nginx-proxy-manager
     restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+      - '81:81'
+      - '25565:25565' # L4 Game/Stream Port
+    volumes:
+      - npm_data:/data
+      - npm_letsencrypt:/etc/letsencrypt
     networks:
       - npm-network
+
+  # 2. NPM Auto-Discovery Agent (v2.0)
+  npm-autodiscovery:
+    image: 'sampson/npm-autodiscovery:latest'
+    container_name: npm-autodiscovery
+    restart: unless-stopped
+    ports:
+      - '8080:8080' # Agent Dashboard
+    environment:
+      - NPM_URL=http://nginx-proxy-manager:81
+      - NPM_USER=admin@example.com
+      - NPM_PASS=changeme
+      - NPM_NETWORK=npm-network
+      - POLL_INTERVAL=30s
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - npm-network
+
+  # 3. Example Microservice with v2.0 Features
+  enterprise-api:
+    image: company/portal-api:latest
+    container_name: portal-api
+    networks:
+      - npm-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      interval: 5s
+      timeout: 3s
+      start_period: 20s
     labels:
-      - "npm.frontend.domain=app.mycompany.local"
-      - "npm.frontend.port=80"
-      - "npm.ssl.enabled=false"
+      # Ingress & SSL
+      - "npm.frontend.domain=portal.company.com"
+      - "npm.frontend.port=8080"
+      - "npm.ssl.enabled=true"
       - "npm.websocket=true"
-      - "npm.block_exploits=true"
+      # Zero-502 Cold-Start Resilience
+      - "npm.healthcheck.enabled=true"
+      - "npm.healthcheck.timeout=45s"
+      # Declarative Middlewares
+      - "npm.middleware.strip_prefix=/api"
+      - "npm.middleware.rate_limit=20r/s"
+      - "npm.middleware.cors=true"
+      - "npm.middleware.security_headers=true"
+      # Custom Location Subpath
+      - "npm.frontend.path=/api"
 
 networks:
   npm-network:
-    external: true</code></pre>
+    name: npm-network
+
+volumes:
+  npm_data:
+  npm_letsencrypt:</code></pre>
+              </div>
+
+              <button class="btn btn-secondary btn-sm" onclick="copyDocsGuideCode('docker-compose-guide', 'Docker Compose template copied to clipboard!')">
+                📋 Copy Compose Template
+              </button>
+            </div>
+
+            <!-- PANE 2: Proxmox VE (PVE) LXC -->
+            <div class="docs-guide-pane" id="pve-guide">
+              <p class="mb-3 text-muted">Proxmox VE LXC container discovery using API Token authentication and GUI tags or notes:</p>
+              
+              <div class="info-alert mb-3">
+                <strong>Step 1:</strong> In Proxmox GUI, go to <em>Datacenter &rarr; Permissions &rarr; API Tokens &rarr; Add</em>. Create a token (e.g. <code>automation</code>) under user <code>root@pam</code> or dedicated service user.
+              </div>
+
+              <div class="code-snippet-wrap mb-3">
+                <pre><code class="language-bash"># Run NPM Auto-Discovery with PVE Hypervisor Provider:
+docker run -d \
+  --name npm-autodiscovery-pve \
+  -p 8080:8080 \
+  -e NPM_URL=http://192.168.1.10:81 \
+  -e NPM_USER=admin@example.com \
+  -e NPM_PASS=changeme \
+  -e PVE_ENABLED=true \
+  -e PVE_URL=https://192.168.1.30:8006 \
+  -e PVE_TOKEN_ID="root@pam!automation" \
+  -e PVE_TOKEN_SECRET="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" \
+  -e PVE_VERIFY_SSL=false \
+  -e PVE_POLL_INTERVAL=15s \
+  -e PVE_PREFERRED_INTERFACE=eth0 \
+  -e PVE_ALLOWED_SUBNETS="192.168.1.0/24" \
+  sampson/npm-autodiscovery:latest
+
+# Tag LXC 101 in Proxmox Web GUI or CLI:
+pct set 101 -tags "npm.domain=adguard.homelab.lan,npm.port=80,npm.ssl=true"
+
+# OR add configuration block into LXC Notes textarea:
+npm.domain: vault.homelab.lan
+npm.port: 8000
+npm.ssl: true
+npm.websocket: true</code></pre>
+              </div>
+
+              <button class="btn btn-secondary btn-sm" onclick="copyDocsGuideCode('pve-guide', 'Proxmox setup snippet copied to clipboard!')">
+                📋 Copy Proxmox Setup Snippet
+              </button>
+            </div>
+
+            <!-- PANE 3: Canonical LXD & Incus -->
+            <div class="docs-guide-pane" id="lxd-guide">
+              <p class="mb-3 text-muted">Canonical LXD and LinuxContainers Incus provider with Unix domain socket event streaming:</p>
+              
+              <div class="code-snippet-wrap mb-3">
+                <pre><code class="language-bash"># Mount Unix Domain Socket into NPM Auto-Discovery:
+docker run -d \
+  --name npm-autodiscovery-lxd \
+  -p 8080:8080 \
+  -v /var/snap/lxd/common/lxd/unix.socket:/var/snap/lxd/common/lxd/unix.socket:ro \
+  -e NPM_URL=http://192.168.1.10:81 \
+  -e NPM_USER=admin@example.com \
+  -e NPM_PASS=changeme \
+  -e LXD_ENABLED=true \
+  -e LXD_SOCKET=/var/snap/lxd/common/lxd/unix.socket \
+  -e LXD_PREFERRED_INTERFACE=eth0 \
+  sampson/npm-autodiscovery:latest
+
+# Configure container metadata via Incus / LXD CLI:
+incus config set my-web user.npm.domain "dashboard.homelab.local"
+incus config set my-web user.npm.port "8080"
+incus config set my-web user.npm.ssl "true"
+
+# Configure Layer 4 stream on an Incus instance:
+incus config set my-db user.npm.stream.port "5432"
+incus config set my-db user.npm.stream.tcp "true"</code></pre>
+              </div>
+
+              <button class="btn btn-secondary btn-sm" onclick="copyDocsGuideCode('lxd-guide', 'LXD setup snippet copied to clipboard!')">
+                📋 Copy LXD / Incus Snippet
+              </button>
+            </div>
+
+            <!-- PANE 4: Declarative IaC Manifest -->
+            <div class="docs-guide-pane" id="iac-guide">
+              <p class="mb-3 text-muted">Declarative static infrastructure-as-code manifests (<code>routes.yaml</code>) for VMs, hardware appliances, and static routes:</p>
+              
+              <div class="code-snippet-wrap mb-3">
+                <pre><code class="language-yaml"># routes.yaml
+proxies:
+  - domain: "truenas.homelab.lan"
+    forward_scheme: "https"
+    forward_host: "192.168.1.50"
+    forward_port: 443
+    ssl: true
+    force_ssl: true
+    websocket: true
+    advanced_config: "client_max_body_size 10G;"
+
+  - domain: "router.homelab.lan"
+    forward_scheme: "https"
+    forward_host: "192.168.1.1"
+    forward_port: 8443
+    ssl: true
+
+streams:
+  - incoming_port: 5432
+    forwarding_host: "192.168.1.40"
+    forwarding_port: 5432
+    tcp: true
+    udp: false
+
+  - incoming_port: 53
+    forwarding_host: "192.168.1.1"
+    forwarding_port: 53
+    tcp: true
+    udp: true</code></pre>
+              </div>
+
+              <button class="btn btn-secondary btn-sm" onclick="copyDocsGuideCode('iac-guide', 'IaC manifest template copied to clipboard!')">
+                📋 Copy IaC Manifest Template
+              </button>
+            </div>
+
+            <!-- PANE 5: Standalone Agent -->
+            <div class="docs-guide-pane" id="standalone-guide">
+              <p class="mb-3 text-muted">Remote Docker worker node routing back to central NPM instance across LAN or WAN:</p>
+              
+              <div class="code-snippet-wrap mb-3">
+                <pre><code class="language-yaml">version: '3.8'
+
+services:
+  npm-autodiscovery:
+    image: 'sampson/npm-autodiscovery:latest'
+    container_name: npm-autodiscovery
+    restart: unless-stopped
+    ports:
+      - '8080:8080'
+    environment:
+      # Central NPM Instance
+      - NPM_URL=http://192.168.1.10:81
+      - NPM_USER=admin@example.com
+      - NPM_PASS=changeme
+      # Multi-Host Isolation & Remote Routing
+      - HOST_ID=worker-node-02
+      - HOST_IP=192.168.1.25
+      - USE_HOST_PORT=true
+      - POLL_INTERVAL=30s
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro</code></pre>
+              </div>
+
+              <button class="btn btn-secondary btn-sm" onclick="copyDocsGuideCode('standalone-guide', 'Standalone agent template copied to clipboard!')">
+                📋 Copy Standalone Template
+              </button>
             </div>
 
             <div class="info-alert mt-4">
-              <strong>💡 Pro Tip:</strong> Ensure that your web container and Nginx Proxy Manager share a common Docker network (e.g. <code>npm-network</code>). NPM can then reach the container directly using its Docker DNS container name!
+              <strong>💡 Pro Tip:</strong> In v2.0, all providers (Docker, Proxmox VE, Canonical LXD/Incus, and static IaC manifests) run simultaneously under the same syncer without collision, unified under your single Nginx Proxy Manager instance!
             </div>
           </div>
+
         </div>
       </section>
 

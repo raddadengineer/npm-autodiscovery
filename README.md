@@ -1,7 +1,8 @@
-# NPM Auto-Discovery 🚀
-> Automated Docker service discovery and dynamic proxy host provisioning for **Nginx Proxy Manager (NPM)**.
+# NPM Auto-Discovery v2.0 🚀
+>
+> Automated Docker, Proxmox LXC & LXD service discovery, Layer 4 stream proxying, and dynamic ingress provisioning for **Nginx Proxy Manager (NPM)**.
 
-[![Go Report Card](https://goreportcard.com/badge/github.com/sampson/npm-autodiscovery)](https://goreportcard.com/report/github.com/sampson/npm-autodiscovery)
+[![Go Report Card](https://goreportcard.com/badge/github.com/raddadengineer/npm-autodiscovery)](https://goreportcard.com/report/github.com/raddadengineer/npm-autodiscovery)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)](Dockerfile)
 
@@ -9,22 +10,28 @@
 
 ## 📖 Overview
 
-While **Traefik** has native support for reading Docker container labels to dynamically create ingress routes, **Nginx Proxy Manager (NPM)** traditionally requires users to manually log in to the web UI and configure every single Proxy Host.
+> **Imagine the magic of Traefik’s zero-touch container auto-discovery combined with the rock-solid reliability, visual simplicity, and high-performance Nginx core of Nginx Proxy Manager.**
 
-**NPM Auto-Discovery** bridges this gap. Operating as a lightweight sidecar container alongside Nginx Proxy Manager, it listens directly to the Docker daemon socket (`/var/run/docker.sock`) for container lifecycle events (`start`, `die`, `stop`, `destroy`). When a container with NPM discovery labels is detected, it automatically creates, updates, or cleans up proxy hosts via the official Nginx Proxy Manager REST API.
+For years, developers, sysadmins, and homelab enthusiasts faced a frustrating compromise: choose **Traefik** for its hands-free label-based dynamic routing while wrestling with steep learning curves and read-only dashboards—or choose **Nginx Proxy Manager (NPM)** for its clean UI and effortless visual SSL certificate management, at the cost of typing every single proxy host into a form by hand.
 
-It also comes bundled with a **real-time Single Page Application dashboard** built directly into the single binary (no Node.js or heavy dependencies required in production), giving you full visibility over active ingress routes, live container discovery logs, and one-click manual synchronization.
+**NPM Auto-Discovery v2.0 shatters this compromise.** Operating as an ultra-fast, lightweight sidecar or standalone agent, it turns Nginx Proxy Manager into an autonomous, self-healing ingress controller across your entire compute stack: Docker containers, Proxmox VE LXC containers, Canonical LXD / Incus instances, and declarative GitOps manifests (`routes.yaml`). It intercepts service lifecycle events in real time, generates declarative Nginx middlewares, eliminates cold-start `502 Bad Gateway` errors, orchestrates Layer 4 TCP/UDP streams, balances scaled upstreams, and syncs proxy hosts seamlessly through the official NPM REST API.
+
+It also embeds a **real-time Cyberpunk SPA dashboard** directly inside the single statically compiled binary (zero Node.js or runtime bloat), giving you complete visibility over active ingress routes, live container discovery telemetry, and one-click manual reconciliation.
 
 ---
 
-## ✨ Features
+## ✨ Features (v2.0)
 
-- **⚡ Native Docker Socket Event Listener:** Subscribes to real-time container events (`start`, `die`, `destroy`, `stop`, `kill`) with automatic backoff reconnection.
-- **🔄 Official NPM API Integration:** Authenticates with NPM's REST API using JWT tokens with automatic renewal prior to expiration and on HTTP 401 retries.
-- **🎯 Smart Network & IP Mapping:** Supports three host resolution strategies (`auto`, `name`, `ip`) to ensure NPM can reach container endpoints across Docker bridge networks and Docker DNS.
-- **🛡️ Idempotent Reconciler:** Diffs desired container configuration with existing NPM proxy hosts. Updates only when configuration changes occur, avoiding unnecessary Nginx reloads.
-- **🧹 Automatic Orphan Pruning:** Automatically purges proxy hosts when containers stop or die, and cleans up orphaned routes during periodic full scans (`POLL_INTERVAL`).
-- **📊 Real-Time Cyberpunk Dashboard:** Embedded Web UI featuring live Server-Sent Events (SSE) log streaming, search & filtering, stats cards, and a Docker Compose label generator.
+- **⚡ Native Multi-Engine Discovery:** Real-time Docker socket events, Proxmox VE REST API token polling (with tags/notes parsing), and Canonical LXD / Incus Unix domain socket lifecycle streaming.
+- **🛡️ Zero-502 HealthCheck-Aware Ingress:** Holds incoming ingress during container warm-up (`starting` state) and smoothly routes traffic only after healthy checks succeed, with configurable timeouts and fallbacks.
+- **🔧 Declarative Nginx Middlewares:** Traefik-style 1-line label middlewares for URL path prefix stripping (`npm.middleware.strip_prefix`), IP CIDR whitelisting, token-bucket rate limiting, CORS preflights, and security headers.
+- **📍 Path-Based Microservice Aggregation:** Mounts separate containers onto subpaths (e.g. `/api`, `/ws`, `/auth`) under a single parent domain, synthesized automatically into NPM custom locations.
+- **⚖️ Dynamic Upstream Load Balancing:** Bundles horizontally scaled containers (`docker compose up --scale svc=3`) into native Nginx `upstream` blocks with `round_robin`, `least_conn`, or `ip_hash`.
+- **🎮 Layer 4 TCP/UDP Stream Discovery:** Automatically discovers and provisions Layer 4 TCP/UDP proxying for game servers (Minecraft, Valheim), databases (Postgres, Redis), MQTT, and DNS.
+- **📈 Prometheus & OTel Metrics Endpoint:** Exposes `/metrics` standard endpoint tracking active proxies, stream counts, sync latency histograms, and container health states.
+- **🎯 Smart Network & IP Mapping:** Supports three host resolution strategies (`auto`, `name`, `ip`) and CIDR subnet filtering to route across Docker bridge networks, physical LANs, and hypervisor bridges.
+- **🧹 Automatic Orphan Pruning:** Automatically purges proxy hosts and streams when containers stop or die, with multi-host collision prevention (`HOST_ID`).
+- **📊 Real-Time Cyberpunk Dashboard:** Embedded Web UI featuring live Server-Sent Events (SSE) log streaming, search & filtering, stats cards, and a Docker / PVE / LXD configuration generator.
 - **📦 Ultra-Lightweight Single Binary:** Statically compiled with Go, embedding the entire frontend. The multi-stage Alpine Docker image is only **~15MB** in size and consumes **<15MB RAM**.
 
 ---
@@ -61,9 +68,11 @@ It also comes bundled with a **real-time Single Page Application dashboard** bui
 
 ---
 
-## 🏷️ Docker Container Label Reference
+## 🏷️ Container Label & Metadata Reference (v2.0)
 
-Add these labels to any Docker container (via `docker-compose.yml` or `docker run -l`) to control proxying:
+Add these labels to any Docker container (via `docker-compose.yml` or `docker run -l`) to configure dynamic ingress:
+
+### Core Ingress & SSL
 
 | Label | Type | Default | Description | Example |
 | :--- | :--- | :--- | :--- | :--- |
@@ -80,9 +89,54 @@ Add these labels to any Docker container (via `docker-compose.yml` or `docker ru
 | `npm.hsts` | boolean | `false` | Enable HTTP Strict Transport Security (HSTS). | `true` |
 | `npm.http2` | boolean | `false` | Enable HTTP/2 protocol support. | `true` |
 | `npm.enabled` | boolean | `true` | Explicitly enable or disable discovery for this container. | `false` |
-| `npm.advanced_config`| string | `""` | Custom Nginx directives appended to the proxy host configuration. | `client_max_body_size 100M;` |
+| `npm.advanced_config` | string | `""` | Custom Nginx directives appended to the proxy host configuration. | `client_max_body_size 100M;` |
 
-*(Note: Short labels like `npm.domain` and `npm.port` are also supported interchangeably).*
+### Zero-502 HealthCheck-Aware Routing
+
+| Label | Type | Default | Description | Example |
+| :--- | :--- | :--- | :--- | :--- |
+| `npm.healthcheck.enabled` | boolean | `false` | Holds ingress during warmup (`starting`); activates only upon `healthy`. | `true` |
+| `npm.healthcheck.timeout` | duration | `60s` | Maximum wait time for health check before triggering fallback. | `45s`, `2m` |
+| `npm.healthcheck.fallback_action` | string | `disable` | Action on warmup failure: `disable`, `keep`, or `redirect`. | `disable` |
+| `npm.healthcheck.redirect_target` | string | `""` | Maintenance redirect URL when fallback is `redirect`. | `https://status.example.com` |
+
+### Declarative Nginx Middlewares Engine
+
+| Label | Type | Default | Description | Example |
+| :--- | :--- | :--- | :--- | :--- |
+| `npm.middleware.strip_prefix` | string | `""` | Strips URL path prefix before routing upstream. | `/api` |
+| `npm.middleware.ip_whitelist` | string | `""` | Comma-separated CIDR allowlist. Denies all unlisted IPs. | `192.168.1.0/24, 10.0.0.0/8` |
+| `npm.middleware.rate_limit` | string | `""` | Token-bucket rate limit (Nginx `limit_req_zone`). | `10r/s`, `60r/m` |
+| `npm.middleware.rate_burst` | integer | `10` | Maximum burst capacity for rate limiter. | `20` |
+| `npm.middleware.cors` | boolean | `false` | Injects automated CORS preflight (OPTIONS 204) and headers. | `true` |
+| `npm.middleware.security_headers` | boolean | `false` | Injects hardened enterprise security headers (SAMEORIGIN, HSTS). | `true` |
+
+### Microservice Subpaths & Dynamic Upstreams
+
+| Label | Type | Default | Description | Example |
+| :--- | :--- | :--- | :--- | :--- |
+| `npm.frontend.path` | string | `/` | Subpath mount point under domain. Multiple containers aggregate automatically! | `/api`, `/ws` |
+| `npm.location.<path>.forward_host` | string | Auto | Target forward host for subpath `<path>`. | `api-service` |
+| `npm.location.<path>.forward_port` | integer | Auto | Target forward port for subpath `<path>`. | `8080` |
+| `npm.location.<path>.strip_prefix` | boolean | `false` | Strip prefix for this custom location block. | `true` |
+| `npm.upstream.balance` | string | `round_robin` | Balancing algorithm for scaled replicas: `round_robin`, `least_conn`, `ip_hash`. | `least_conn` |
+| `npm.upstream.fail_timeout` | duration | `10s` | Upstream `fail_timeout` recovery window. | `15s` |
+| `npm.upstream.max_fails` | integer | `3` | Max failures before marking upstream backend down. | `5` |
+
+### Layer 4 TCP/UDP Streams
+
+| Label | Type | Default | Description | Example |
+| :--- | :--- | :--- | :--- | :--- |
+| `npm.stream.port` | integer | *Required* | Public port for NPM to listen on for Layer 4 stream. | `25565`, `5432`, `53` |
+| `npm.stream.forward_port` | integer | Auto | Target port on container. Defaults to stream port. | `25565` |
+| `npm.stream.tcp` | boolean | `true` | Enable TCP stream proxying. | `true` |
+| `npm.stream.udp` | boolean | `false` | Enable UDP stream proxying (e.g. DNS, gaming, voice). | `true` |
+
+### Hypervisor Metadata (Proxmox VE & LXD / Incus)
+
+- **Proxmox VE (Tags):** `pct set <vmid> -tags "npm.domain=app.lan,npm.port=80,npm.ssl=true"`
+- **Proxmox VE (Notes):** Add YAML block to container notes textarea (`npm.domain: app.lan`, `npm.port: 8080`).
+- **Canonical LXD / Incus:** `incus config set <instance> user.npm.domain "app.lan"` and `user.npm.port "8080"`.
 
 ---
 
@@ -98,13 +152,21 @@ Add these labels to any Docker container (via `docker-compose.yml` or `docker ru
 | `USE_HOST_PORT` | `false` | When `HOST_IP` is set, maps forward target to the container's published host port. |
 | `DOCKER_SOCKET` | `/var/run/docker.sock` | Path to the Docker daemon socket (or `tcp://host:2375`). |
 | `NPM_NETWORK` | `""` | Name of the shared Docker bridge network connecting NPM and target containers. |
-| `FORWARD_HOST_STRATEGY`| `auto` | Target resolution strategy: `auto`, `name`, or `ip` (see below). |
+| `FORWARD_HOST_STRATEGY` | `auto` | Target resolution strategy: `auto`, `name`, or `ip` (see below). |
 | `POLL_INTERVAL` | `30s` | Frequency for full container scans and orphan pruning. |
-| `DEFAULT_FORWARD_SCHEME`| `http` | Default forward scheme if container label is omitted (`http` or `https`). |
+| `PVE_ENABLED` | `false` | Enable Proxmox VE (PVE) LXC container auto-discovery. |
+| `PVE_URL` | `""` | Proxmox API URL (e.g. `https://192.168.1.30:8006`). |
+| `PVE_TOKEN_ID` / `PVE_TOKEN_SECRET` | `""` | Proxmox API Token credentials. |
+| `PVE_PREFERRED_INTERFACE` | `eth0` | Preferred network interface for LXC container IP discovery. |
+| `PVE_ALLOWED_SUBNETS` | `""` | Optional comma-separated CIDR filter for LXC IPs (e.g. `192.168.1.0/24`). |
+| `LXD_ENABLED` | `false` | Enable Canonical LXD / LinuxContainers Incus auto-discovery. |
+| `LXD_SOCKET` | `/var/snap/lxd/...` | Path to LXD or Incus Unix domain socket. |
+| `ROUTES_FILE` / `ROUTES_DIR` | `""` | Path to declarative static YAML file or directory (`routes.yaml`). |
+| `DEFAULT_FORWARD_SCHEME` | `http` | Default forward scheme if container label is omitted (`http` or `https`). |
 | `DEFAULT_SSL_ENABLED` | `false` | Default SSL enablement if not specified in labels. |
 | `DEFAULT_SSL_FORCED` | `false` | Default SSL force redirect if not specified in labels. |
 | `DEFAULT_WEBSOCKET` | `true` | Default WebSocket upgrade policy. |
-| `DEFAULT_BLOCK_EXPLOITS`| `true` | Default exploit blocking policy. |
+| `DEFAULT_BLOCK_EXPLOITS` | `true` | Default exploit blocking policy. |
 | `LABEL_PREFIX` | `npm.` | Custom label prefix to match. |
 | `PORT` | `8080` | Port for the built-in Web Management Dashboard and REST API. |
 
@@ -135,7 +197,8 @@ You can run **multiple `npm-autodiscovery` agents on separate Docker hosts**, al
                   └─────────────────────────────────────┘
 ```
 
-### How Multi-Host Support Works:
+### How Multi-Host Support Works
+
 1. **Host Isolation & Ownership Protection:**
    Every proxy host created in NPM is automatically tagged with that node's `HOST_ID` in its metadata and Nginx config header (e.g. `# Managed by NPM-AutoDiscovery [host_id: worker-02]`). An agent on Host 1 will **never** overwrite, touch, or prune proxy hosts that belong to Host 2!
 2. **Cross-Host Traffic Routing:**
@@ -147,6 +210,7 @@ You can run **multiple `npm-autodiscovery` agents on separate Docker hosts**, al
 ### 🌐 Network Resolution Strategies
 
 NPM Auto-Discovery provides three host resolution strategies (`FORWARD_HOST_STRATEGY`):
+
 1. **`auto` (Recommended):** If `NPM_NETWORK` is set and the container is connected to that network, resolves using the container's Docker name (leveraging Docker's internal DNS). If not, falls back to the container's internal network IP address.
 2. **`name`:** Resolves using the Docker container name (e.g., `web-service`). Ideal when all containers and NPM reside on the same user-defined Docker bridge network.
 3. **`ip`:** Directly queries the container's assigned IP address on the shared network or bridge (e.g., `172.20.0.5`).
@@ -170,7 +234,7 @@ version: '3.8'
 
 services:
   npm-autodiscovery:
-    image: sampson/npm-autodiscovery:latest
+    image: raddadengineer/npm-autodiscovery:latest
     build: .
     container_name: npm-autodiscovery
     restart: unless-stopped
@@ -196,18 +260,86 @@ networks:
 
 ### Option B: All-in-One Development Stack (With NPM & Demo App)
 
-To spin up NPM Auto-Discovery alongside a new Nginx Proxy Manager instance and a demo container, use the `--profile with-npm` or `--profile all-in-one` flag:
+To spin up NPM Auto-Discovery alongside a new Nginx Proxy Manager instance and a demo target service in a single command, you can use the built-in Compose profiles:
 
 ```bash
 docker compose --profile all-in-one up -d
 ```
 
-### Starting the Stack
-```bash
-docker compose up -d
+Or deploy using this complete, self-contained `docker-compose.yml`:
+
+```yaml
+version: '3.8'
+
+services:
+  # 1. Nginx Proxy Manager
+  npm:
+    image: 'jc21/nginx-proxy-manager:latest'
+    container_name: nginx-proxy-manager
+    restart: unless-stopped
+    ports:
+      - '80:80'     # Public HTTP Traffic
+      - '443:443'   # Public HTTPS Traffic
+      - '81:81'     # NPM Admin Web UI & REST API
+    environment:
+      DISABLE_IPV6: 'true'
+    volumes:
+      - npm_data:/data
+      - npm_letsencrypt:/etc/letsencrypt
+    networks:
+      - npm-network
+
+  # 2. NPM Auto-Discovery Agent
+  npm-autodiscovery:
+    image: raddadengineer/npm-autodiscovery:latest
+    container_name: npm-autodiscovery
+    restart: unless-stopped
+    ports:
+      - '8080:8080' # Auto-Discovery Management Dashboard
+    environment:
+      - NPM_URL=http://npm:81
+      - NPM_USER=admin@example.com
+      - NPM_PASS=changeme
+      - NPM_NETWORK=npm-network
+      - FORWARD_HOST_STRATEGY=auto
+      - POLL_INTERVAL=30s
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - npm-network
+
+  # 3. Demo Target Service (Auto-Discovered & Provisioned)
+  demo-whoami:
+    image: traefik/whoami:latest
+    container_name: demo-whoami
+    restart: unless-stopped
+    networks:
+      - npm-network
+    labels:
+      - "npm.frontend.domain=whoami.local"
+      - "npm.frontend.port=80"
+      - "npm.forward_scheme=http"
+      - "npm.websocket=true"
+      - "npm.block_exploits=true"
+      - "npm.ssl.enabled=false"
+
+volumes:
+  npm_data:
+    driver: local
+  npm_letsencrypt:
+    driver: local
+
+networks:
+  npm-network:
+    name: npm-network
+    driver: bridge
 ```
-1. Open NPM at `http://localhost:81` to configure your initial admin account if starting fresh.
-2. Open the NPM Auto-Discovery Dashboard at `http://localhost:8080` to watch containers being discovered in real time!
+
+### Quickstart Guide
+
+1. **Initial NPM Setup:** Open `http://localhost:81` in your browser. If starting fresh, log in with default credentials (`admin@example.com` / `changeme`) and set your administrator email and password.
+2. **Auto-Discovery Dashboard:** Open `http://localhost:8080` to watch the agent authenticate with NPM, discover `demo-whoami`, and provision the proxy host in real time!
+3. **Verify Routing:** Add `127.0.0.1 whoami.local` to your `/etc/hosts` and open `http://whoami.local` in your browser. Traffic will route through NPM straight to the demo container!
 
 ---
 
@@ -230,10 +362,12 @@ The application serves a single-page web app and REST API on `PORT` (`8080`):
 ## 🛠️ Development & Building Locally
 
 ### Requirements
+
 - Go 1.22+
 - Docker Engine / Docker Desktop
 
 ### Run Locally
+
 ```bash
 # Run tests
 go test -v ./...
@@ -252,4 +386,5 @@ PORT=8080 \
 ---
 
 ## 📄 License
+
 MIT License. See [LICENSE](LICENSE) for details.

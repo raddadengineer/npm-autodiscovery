@@ -10,11 +10,11 @@
 2. [Traefik vs. NPM Auto-Discovery: Detailed Parity Matrix](#-traefik-vs-npm-auto-discovery-detailed-parity-matrix)
 3. [Ecosystem & Architectural Topology](#-ecosystem--architectural-topology)
 4. [Phase 0: Current Release (v1.0.0 — Production Ready)](#-phase-0-current-release-v100--production-ready)
-5. [Phase 1: Ingress Reliability & Declarative Middlewares (v1.1.0)](#-phase-1-ingress-reliability--declarative-middlewares-v110)
+5. [Phase 1: Ingress Reliability & Declarative Middlewares (v1.1.0 — Completed)](#-phase-1-ingress-reliability--declarative-middlewares-v110--completed)
    - [1.1 Zero-502 HealthCheck-Aware Routing](#11-zero-502-healthcheck-aware-routing-cold-start-resilience)
    - [1.2 Declarative Nginx Middlewares Engine](#12-declarative-nginx-middlewares-engine)
    - [1.3 Prometheus Observability & OpenTelemetry Metrics](#13-prometheus-observability--opentelemetry-metrics)
-6. [Phase 2: Microservices Ingress & Protocol Expansion (v1.2.0)](#-phase-2-microservices-ingress--protocol-expansion-v120)
+6. [Phase 2: Microservices Ingress & Protocol Expansion (v1.2.0 — Current Target)](#-phase-2-microservices-ingress--protocol-expansion-v120--current-target)
    - [2.1 Custom Locations & Path-Based Microservice Ingress](#21-custom-locations--path-based-microservice-ingress)
    - [2.2 Layer 4 TCP/UDP Streams Dynamic Discovery](#22-layer-4-tcpudp-streams-dynamic-discovery)
    - [2.3 Dynamic Upstream Load Balancing for Scaled Services](#23-dynamic-upstream-load-balancing-for-scaled-services)
@@ -63,25 +63,28 @@ In modern homelab, edge, and enterprise environments, reverse proxies sit at the
 
 ## ⚖️ Traefik vs. NPM Auto-Discovery: Detailed Parity Matrix
 
-| Feature Domain | Feature Capability | Traefik v3 | Standard NPM | NPM Auto-Discovery (v1.0 Live) | NPM Auto-Discovery (v2.0 Target) |
+| Feature Domain | Feature Capability | Traefik v3 | Standard NPM | NPM Auto-Discovery (v2.0 Live) | Future Expansion (v2.x) |
 | :--- | :--- | :---: | :---: | :---: | :---: |
-| **Service Discovery** | Real-time Docker Socket Event Ingress | ✅ Yes | ❌ No | ✅ Yes (Sub-millisecond) | ✅ Yes |
-| | Multi-Host Cluster Discovery | 🟡 Traefik EE (Paid) | ❌ Manual | ✅ Yes (`HOST_ID` Isolation) | ✅ Yes (Mesh Auto-Peering) |
-| | Proxmox VE LXC Auto-Discovery | ❌ No | ❌ No | ❌ (Manual IaC) | 🚀 **Phase 3 (Native PVE API)** |
-| | Canonical LXD / Incus Auto-Discovery | ❌ No | ❌ No | ❌ (Manual IaC) | 🚀 **Phase 3 (Socket Stream)** |
-| | Declarative YAML/JSON File Provider | ✅ Yes (`file`) | ❌ No | ✅ Yes (`routes.yaml`) | ✅ Yes (GitOps + Hot-Reload) |
-| **Ingress Management** | Interactive Web Management GUI | ❌ Read-Only | ✅ Full UI | ✅ Dual (SPA + NPM UI) | ✅ Integrated Dual Dashboard |
-| | Automatic SSL (Let's Encrypt / ACME) | ✅ Yes (JSON/Cert) | ✅ Yes (Visual) | ✅ Yes (Via NPM API) | ✅ Yes (Cert Automator) |
-| | Route Idempotency & Diffing | ✅ Native | ❌ Manual | ✅ Yes (Zero-Nginx Reload Spam)| ✅ Yes |
-| **Reliability & Routing** | Cold-Start Zero-502 HealthChecking | ✅ Yes | ❌ No | 📋 Planned | 🚀 **Phase 1 (Health-Aware)** |
-| | Path Sub-routing (`/api`, `/ws`, `/`) | ✅ Yes | 🟡 Manual Web UI | 📋 Planned | 🚀 **Phase 2 (Custom Locations)**|
-| | Upstream Replica Load Balancing | ✅ Yes | ❌ Manual | 📋 Planned | 🚀 **Phase 2 (Dynamic Upstreams)**|
-| | Layer 4 TCP/UDP Streams | ✅ Yes | 🟡 Manual Web UI | 📋 Planned | 🚀 **Phase 2 (Stream Discovery)**|
-| **Middleware & Security**| Declarative Strip Prefix / URL Rewrite| ✅ Yes | ❌ Manual Config | 📋 Manual Config Label | 🚀 **Phase 1 (Nginx Directives)**|
-| | IP Whitelisting / CIDR Filtering | ✅ Yes | 🟡 Manual Access Lists| 📋 Manual Config Label | 🚀 **Phase 1 (Nginx Directives)**|
-| | Rate Limiting Zones | ✅ Yes | ❌ Manual Config | 📋 Manual Config Label | 🚀 **Phase 1 (Nginx Directives)**|
-| | Forward Auth SSO (Authentik / Authelia)| ✅ Yes | ❌ Complex Nginx | 📋 Manual Config Label | 🚀 **Phase 4 (1-Label SSO)** |
-| | CrowdSec IPS / WAF Bouncer | 🟡 Plugin | ❌ Complex Nginx | 📋 Manual Config Label | 🚀 **Phase 4 (Auto-Bouncer)** |
+| **Service Discovery** | Real-time Docker Socket Event Ingress | ✅ Yes | ❌ No | ✅ **Yes (Sub-millisecond)** | ✅ Mesh Auto-Peering |
+| | Multi-Host Cluster Discovery | 🟡 Traefik EE (Paid) | ❌ Manual | ✅ **Yes (`HOST_ID` Isolation)** | ✅ Cross-node sync |
+| | Proxmox VE LXC Auto-Discovery | ❌ No | ❌ No | ✅ **Yes (Native PVE API & Tags)** | ✅ PVE Cluster HA |
+| | Canonical LXD / Incus Auto-Discovery | ❌ No | ❌ No | ✅ **Yes (Unix Socket Stream)** | ✅ Clustered Incus |
+| | Declarative YAML/JSON File Provider | ✅ Yes (`file`) | ❌ No | ✅ **Yes (`routes.yaml` + IaC)** | 🚀 Phase 5 (GitOps) |
+| **Ingress Management** | Interactive Web Management GUI | ❌ Read-Only | ✅ Full UI | ✅ **Dual (SPA + NPM UI)** | ✅ Integrated Dual Dashboard |
+| | Automatic SSL (Let's Encrypt / ACME) | ✅ Yes (JSON/Cert) | ✅ Yes (Visual) | ✅ **Yes (Via NPM API)** | ✅ Cert Automator |
+| | Route Idempotency & Diffing | ✅ Native | ❌ Manual | ✅ **Yes (Zero-Nginx Reload Spam)**| ✅ Atomic reload buffer |
+| **Reliability & Routing** | Cold-Start Zero-502 HealthChecking | ✅ Yes | ❌ No | ✅ **Yes (Hold Queue & Fallbacks)** | ✅ Dynamic Health Probe |
+| | Path Sub-routing (`/api`, `/ws`, `/`) | ✅ Yes | 🟡 Manual Web UI | ✅ **Yes (Custom Locations)** | ✅ Regex Locations |
+| | Upstream Replica Load Balancing | ✅ Yes | ❌ Manual | ✅ **Yes (Dynamic Upstreams)** | ✅ Upstream weight tags |
+| | Layer 4 TCP/UDP Streams | ✅ Yes | 🟡 Manual Web UI | ✅ **Yes (Stream Discovery)** | ✅ Proxy Protocol v2 |
+| **Middleware & Security**| Declarative Strip Prefix / URL Rewrite| ✅ Yes | ❌ Manual Config | ✅ **Yes (Directives Engine)** | ✅ RegEx rewrites |
+| | IP Whitelisting / CIDR Filtering | ✅ Yes | 🟡 Manual Access Lists| ✅ **Yes (Directives Engine)** | ✅ GeoIP filtering |
+| | Token-Bucket Rate Limiting | ✅ Yes | ❌ Manual Config | ✅ **Yes (Directives Engine)** | ✅ Distributed Rate Limit |
+| | Automated CORS Preflight & Headers | ✅ Yes | ❌ Manual Config | ✅ **Yes (Directives Engine)** | ✅ Dynamic Origin sets |
+| | Security Headers (SAMEORIGIN, HSTS) | ✅ Yes | ❌ Manual Config | ✅ **Yes (Directives Engine)** | ✅ CSP Builder |
+| | Forward Auth SSO (Authentik / Authelia)| ✅ Yes | ❌ Complex Nginx | 📋 Manual Config Label | 🚀 Phase 4 (1-Label SSO) |
+| | CrowdSec IPS / WAF Bouncer | 🟡 Plugin | ❌ Complex Nginx | 📋 Manual Config Label | 🚀 Phase 4 (Auto-Bouncer) |
+| **Observability** | Prometheus `/metrics` Endpoint | ✅ Yes | ❌ No | ✅ **Yes (OTel + Prometheus)** | ✅ OpenTelemetry Traces |
 | **System Footprint** | Binary / Memory Footprint | ~60MB / 80MB RAM | ~120MB RAM | **~9MB / <15MB RAM** | **~15MB / <25MB RAM** |
 
 ---
@@ -157,7 +160,12 @@ The initial version is fully implemented, verified, and operational:
 
 ---
 
-## 🟡 Phase 1: Ingress Reliability & Declarative Middlewares (v1.1.0)
+## ✅ Phase 1: Ingress Reliability & Declarative Middlewares (v1.1.0 — Completed)
+
+All Phase 1 requirements are fully implemented, unit-tested, and verified:
+- [x] **1.1 Zero-502 HealthCheck-Aware Routing:** Docker `HEALTHCHECK` detection with `starting` hold queue, automatic provisioning upon `healthy` events, configurable timeouts (`npm.healthcheck.timeout`), and flexible fallbacks (`disable`, `redirect`, `keep`).
+- [x] **1.2 Declarative Nginx Middlewares Engine:** Automatic generation and injection of safe Nginx blocks for path prefix stripping (`npm.middleware.strip_prefix`), IP CIDR filtering (`npm.middleware.ip_whitelist`), token-bucket rate limiting (`npm.middleware.rate_limit`, `npm.middleware.rate_burst`), CORS preflight handling (`npm.middleware.cors`), and hardened security headers (`npm.middleware.security_headers`).
+- [x] **1.3 Prometheus Observability & OpenTelemetry Metrics:** Standard `/metrics` HTTP endpoint exposing `npm_autodiscovery_active_proxies` (gauge), `npm_autodiscovery_events_total` (counter), `npm_autodiscovery_sync_duration_seconds` (histogram with 11 latency buckets), and `npm_autodiscovery_health_status_total` with zero external runtime dependencies.
 
 ### 1.1 Zero-502 HealthCheck-Aware Routing (Cold-Start Resilience)
 
@@ -223,6 +231,7 @@ services:
 
 - **Effort:** 12–16 Engineering Hours.
 - **Priority:** High (Direct user-facing quality improvement).
+- **Status:** ✅ **Completed & Shipped in v1.1.0** (Implemented in `internal/syncer`, verified under race detection).
 
 ---
 
@@ -305,6 +314,7 @@ flowchart LR
 
 - **Effort:** 16–20 Engineering Hours.
 - **Priority:** High.
+- **Status:** ✅ **Completed & Shipped in v1.1.0** (Implemented in `internal/middleware`, verified under race detection).
 
 ---
 
@@ -333,10 +343,16 @@ npm_autodiscovery_sync_duration_seconds_bucket{le="0.1"} 150
 
 - **Effort:** 6–8 Engineering Hours.
 - **Priority:** Medium.
+- **Status:** ✅ **Completed & Shipped in v1.1.0** (Implemented in `internal/metrics`, `/metrics` endpoint live).
 
 ---
 
-## 📋 Phase 2: Microservices Ingress & Protocol Expansion (v1.2.0)
+## ✅ Phase 2: Microservices Ingress & Protocol Expansion (v1.2.0 — Completed)
+
+All Phase 2 requirements are fully implemented, unit-tested, and verified:
+- [x] **2.1 Custom Locations & Path-Based Microservice Ingress:** Subpath routing (`/api`, `/ws`, etc.) with label-based definitions (`npm.frontend.path`, `npm.location.<path>.*`), multi-container aggregation under a shared domain, prefix stripping, websocket upgrades, and declarative IaC manifests.
+- [x] **2.2 Layer 4 TCP/UDP Streams Dynamic Discovery:** Discovery of stream targets via labels (`npm.stream.*`) and IaC manifests (`streams:` in `routes.yaml`), synchronization with NPM's `/api/nginx/streams` API, and host isolation.
+- [x] **2.3 Dynamic Upstream Load Balancing for Scaled Services:** Detecting scaled container replicas (`--scale worker=3`) sharing identical domain and path, synthesizing Nginx `upstream` blocks with configurable balancing algorithms (`least_conn`, `ip_hash`, `round_robin`), fail timeout, and max fails.
 
 ### 2.1 Custom Locations & Path-Based Microservice Ingress
 
@@ -350,7 +366,7 @@ Modern full-stack web applications rarely consist of a single monolithic contain
 In standard NPM, all of these can be consolidated under a single domain via the **Custom Locations** tab. Currently, NPM Auto-Discovery requires each container to have a unique domain.
 
 #### Architecture & Multi-Container Aggregation
-The Ingress Syncer will group disparate containers sharing the same `npm.frontend.domain` into a unified target definition:
+The Ingress Syncer groups disparate containers sharing the same `npm.frontend.domain` into a unified target definition:
 
 ```yaml
 # Container 1: Frontend
@@ -359,24 +375,24 @@ services:
     image: company/web:latest
     labels:
       npm.frontend.domain: "app.company.com"
-      npm.location./.forward_host: "auto"
-      npm.location./.forward_port: "3000"
+      npm.frontend.path: "/"
+      npm.frontend.port: "3000"
 
   api-service:
     image: company/api:latest
     labels:
       npm.frontend.domain: "app.company.com"
-      npm.location./api.forward_host: "auto"
-      npm.location./api.forward_port: "8080"
-      npm.location./api.strip_prefix: "true"
+      npm.frontend.path: "/api"
+      npm.frontend.port: "8080"
+      npm.middleware.strip_prefix: "/api"
 
   ws-service:
     image: company/ws:latest
     labels:
       npm.frontend.domain: "app.company.com"
-      npm.location./ws.forward_host: "auto"
-      npm.location./ws.forward_port: "9000"
-      npm.location./ws.websocket: "true"
+      npm.frontend.path: "/ws"
+      npm.frontend.port: "9000"
+      npm.websocket: "true"
 ```
 
 The syncer reconciles these containers and calls NPM's `/api/nginx/proxy-hosts` endpoint with the populated `locations` JSON array:
@@ -407,6 +423,7 @@ The syncer reconciles these containers and calls NPM's `/api/nginx/proxy-hosts` 
 
 - **Effort:** 20–24 Engineering Hours.
 - **Priority:** High.
+- **Status:** ✅ **Completed & Shipped in v1.2.0** (Implemented in `internal/syncer`, `internal/iac`, and `internal/npm`).
 
 ---
 
@@ -451,6 +468,7 @@ The agent submits the configuration to NPM's official `/api/nginx/streams` endpo
 
 - **Effort:** 12–16 Engineering Hours.
 - **Priority:** Medium.
+- **Status:** ✅ **Completed & Shipped in v1.2.0** (Implemented in `internal/npm`, `internal/syncer`, and exposed via `/api/streams` and dashboard UI).
 
 ---
 
@@ -479,10 +497,15 @@ The Proxy Host's `forward_host` is automatically directed to `upstream_api_compa
 
 - **Effort:** 16–20 Engineering Hours.
 - **Priority:** Medium.
+- **Status:** ✅ **Completed & Shipped in v1.2.0** (Implemented in `internal/upstream` and `internal/syncer`).
 
 ---
 
-## 🐧 Phase 3: Native LXC & Hypervisor Discovery (v1.3.0 — The Differentiator)
+## ✅ Phase 3: Native LXC & Hypervisor Discovery (v1.3.0 — Completed)
+
+All Phase 3 requirements are fully implemented, unit-tested, and verified:
+- [x] **3.1 Proxmox VE (PVE) LXC Auto-Discovery Provider:** REST API token authentication, cluster & node queries, tag/notes parsing (Channels A & B), dynamic IP resolution with preferred interface & CIDR subnet filtering, proxy & stream reconciliation.
+- [x] **3.2 Canonical LXD & Incus Provider:** Unix domain socket communication (`/var/snap/lxd/...` and `/var/lib/incus/...`), user metadata parsing (`user.npm.*`), dynamic IP resolution (`state.network`), real-time lifecycle event streaming (`/1.0/events?type=lifecycle`), proxy & stream reconciliation.
 
 > 💡 **Why this is a Game Changer:**
 > Traefik, Caddy, and Envoy offer zero native discovery for hypervisor-based LXC containers. In the homelab, enterprise edge, and Proxmox communities, tens of thousands of services run inside lightweight LXC containers rather than Docker. Providing native LXC discovery establishes NPM Auto-Discovery as an unmatched solution in this domain.
@@ -562,6 +585,7 @@ The provider automatically queries the active IPv4 address assigned to the LXC c
 
 - **Effort:** 24–32 Engineering Hours.
 - **Priority:** Highest Strategic Value.
+- **Status:** ✅ **Completed & Shipped in v1.3.0** (Implemented in `internal/pve`, `internal/syncer`, and exposed via dashboard UI).
 
 ---
 
@@ -572,7 +596,7 @@ For users running pure Ubuntu LXD or the community fork **Incus** on Linux serve
 - Subscribes to the daemon's local Unix Domain Socket:
   - `/var/snap/lxd/common/lxd/unix.socket` (LXD)
   - `/var/lib/incus/unix.socket` (Incus)
-- Establishes a persistent WebSocket connection to `/1.0/events?type=lifecycle`.
+- Establishes a persistent connection to `/1.0/events?type=lifecycle`.
 - Receives instant, push-based notifications whenever an LXC container starts, stops, or reboots.
 
 #### Metadata Configuration
@@ -587,6 +611,7 @@ The provider extracts `state.network.eth0.addresses` to discover the container's
 
 - **Effort:** 20–24 Engineering Hours.
 - **Priority:** High.
+- **Status:** ✅ **Completed & Shipped in v1.3.0** (Implemented in `internal/lxd`, `internal/syncer`, and exposed via dashboard UI).
 
 ---
 
@@ -682,15 +707,15 @@ Enables loading sensitive NPM administrator credentials, custom SSL certificates
 
 | Phase | Milestone | Sub-Component | Complexity | Estimated Effort | Target Version |
 | :---: | :--- | :--- | :---: | :---: | :---: |
-| **1** | **Resilience & Middlewares** | 1.1 Docker HealthCheck Zero-502 Engine | Medium | 14 Hours | `v1.1.0` |
-| | | 1.2 Declarative Nginx Middlewares Engine | High | 18 Hours | `v1.1.0` |
-| | | 1.3 Prometheus & OTel Metrics Endpoint | Low | 8 Hours | `v1.1.0` |
-| **2** | **Microservices & L4** | 2.1 Custom Locations Subpath Aggregation | High | 22 Hours | `v1.2.0` |
-| | | 2.2 Layer 4 TCP/UDP Streams Dynamic Discovery | Medium | 14 Hours | `v1.2.0` |
-| | | 2.3 Dynamic Upstream Load Balancing | High | 18 Hours | `v1.2.0` |
-| **3** | **LXC Hypervisors** | 3.1 Proxmox VE LXC API & Tags Discovery | Very High | 28 Hours | `v1.3.0` |
-| | | 3.2 Canonical LXD / Incus Socket Streamer | High | 22 Hours | `v1.3.0` |
-| **4** | **Enterprise Auth** | 4.1 Forward Auth (Authentik / Authelia SSO) | Medium | 14 Hours | `v1.4.0` |
+| **1** | **Resilience & Middlewares** | 1.1 Docker HealthCheck Zero-502 Engine | Medium | 14 Hours | `v1.1.0` (✅ Complete) |
+| | | 1.2 Declarative Nginx Middlewares Engine | High | 18 Hours | `v1.1.0` (✅ Complete) |
+| | | 1.3 Prometheus & OTel Metrics Endpoint | Low | 8 Hours | `v1.1.0` (✅ Complete) |
+| **2** | **Microservices & L4** | 2.1 Custom Locations Subpath Aggregation | High | 22 Hours | `v1.2.0` (✅ Complete) |
+| | | 2.2 Layer 4 TCP/UDP Streams Dynamic Discovery | Medium | 14 Hours | `v1.2.0` (✅ Complete) |
+| | | 2.3 Dynamic Upstream Load Balancing | High | 18 Hours | `v1.2.0` (✅ Complete) |
+| **3** | **LXC Hypervisors** | 3.1 Proxmox VE LXC API & Tags Discovery | Very High | 28 Hours | `v1.3.0` (✅ Complete) |
+| | | 3.2 Canonical LXD / Incus Socket Streamer | High | 22 Hours | `v1.3.0` (✅ Complete) |
+| **4** | **Enterprise Auth** | 4.1 Forward Auth (Authentik / Authelia SSO) | Medium | 14 Hours | `v1.4.0` (🟡 Next Target) |
 | | | 4.2 CrowdSec Auto-Remediation Bouncer | Medium | 14 Hours | `v1.4.0` |
 | **5** | **Cloud-Native GitOps** | 5.1 Git Webhook Reconciler & Pipeline | Medium | 16 Hours | `v1.5.0` |
 | | | 5.2 Secret Store Providers (Vault / Doppler)| Medium | 16 Hours | `v1.5.0` |

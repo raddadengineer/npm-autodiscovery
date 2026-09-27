@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/sampson/npm-autodiscovery/internal/config"
+	"github.com/sampson/npm-autodiscovery/internal/metrics"
 	"github.com/sampson/npm-autodiscovery/internal/syncer"
 )
 
@@ -38,11 +39,15 @@ func (s *Server) Start() error {
 	// API Routes
 	mux.HandleFunc("/api/status", s.handleStatus)
 	mux.HandleFunc("/api/proxies", s.handleProxies)
+	mux.HandleFunc("/api/streams", s.handleStreams)
 	mux.HandleFunc("/api/containers", s.handleContainers)
 	mux.HandleFunc("/api/sync", s.handleSync)
 	mux.HandleFunc("/api/events/stream", s.handleEventsStream)
 	mux.HandleFunc("/api/events", s.handleEventsHistory)
 	mux.HandleFunc("/api/config", s.handleConfig)
+
+	// Prometheus Metrics Endpoint (Phase 1)
+	mux.HandleFunc("/metrics", s.handleMetrics)
 
 	// Static Web Dashboard files
 	if s.webFS != nil {
@@ -116,6 +121,20 @@ func (s *Server) handleProxies(w http.ResponseWriter, r *http.Request) {
 	s.writeJSON(w, http.StatusOK, map[string]interface{}{
 		"proxies": proxies,
 		"count":   len(proxies),
+	})
+}
+
+// handleStreams returns active auto-discovered Layer 4 streams.
+func (s *Server) handleStreams(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	streams := s.syncer.GetTrackedStreams()
+	s.writeJSON(w, http.StatusOK, map[string]interface{}{
+		"streams": streams,
+		"count":   len(streams),
 	})
 }
 
@@ -227,6 +246,11 @@ func (s *Server) handleEventsStream(w http.ResponseWriter, r *http.Request) {
 // handleConfig returns public configuration details.
 func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 	s.writeJSON(w, http.StatusOK, s.cfg)
+}
+
+// handleMetrics serves standard Prometheus metrics.
+func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
+	metrics.Handler().ServeHTTP(w, r)
 }
 
 func (s *Server) writeJSON(w http.ResponseWriter, code int, data interface{}) {

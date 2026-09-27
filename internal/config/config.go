@@ -37,6 +37,11 @@ type Config struct {
 	DefaultWebsocket     bool   `json:"default_websocket"`
 	DefaultBlockExploits bool   `json:"default_block_exploits"`
 
+	// HealthCheck Routing Defaults (Phase 1)
+	DefaultHealthcheckEnabled  bool          `json:"default_healthcheck_enabled"`
+	DefaultHealthcheckTimeout  time.Duration `json:"default_healthcheck_timeout"`
+	DefaultHealthcheckFallback string        `json:"default_healthcheck_fallback"` // "disable", "redirect", "keep"
+
 	// Multi-Host / Cluster Configuration
 	HostID      string `json:"host_id"`       // Unique identifier for this host (e.g., "worker-01", "vps-east")
 	HostIP      string `json:"host_ip"`       // Public/LAN IP or hostname of this Docker host (used for cross-host routing)
@@ -45,6 +50,24 @@ type Config struct {
 	// Infrastructure-as-Code (IaC) / Static File Provider
 	RoutesFile string `json:"routes_file"` // Path to a declarative static routes YAML/JSON file
 	RoutesDir  string `json:"routes_dir"`  // Path to a directory containing declarative routes YAML/JSON files
+
+	// Proxmox VE (PVE) LXC Discovery (Phase 3.1)
+	PVEEnabled            bool          `json:"pve_enabled"`
+	PVEURL                string        `json:"pve_url"`
+	PVETokenID            string        `json:"pve_token_id"`
+	PVETokenSecret        string        `json:"-"`
+	PVEVerifySSL          bool          `json:"pve_verify_ssl"`
+	PVENode               string        `json:"pve_node"`
+	PVEPollInterval       time.Duration `json:"pve_poll_interval"`
+	PVEPreferredInterface string        `json:"pve_preferred_interface"`
+	PVEAllowedSubnets     string        `json:"pve_allowed_subnets"`
+
+	// Canonical LXD & Incus Discovery (Phase 3.2)
+	LXDEnabled            bool          `json:"lxd_enabled"`
+	LXDSocket             string        `json:"lxd_socket"`
+	LXDPreferredInterface string        `json:"lxd_preferred_interface"`
+	LXDAllowedSubnets     string        `json:"lxd_allowed_subnets"`
+	LXDPollInterval       time.Duration `json:"lxd_poll_interval"`
 
 	// Label Configuration
 	LabelPrefix string `json:"label_prefix"`
@@ -108,29 +131,88 @@ func LoadFromEnv() (*Config, error) {
 	hostIP := getEnv("HOST_IP", getEnv("NODE_IP", ""))
 	useHostPort := getEnvBool("USE_HOST_PORT", hostIP != "")
 
+	defaultHealthcheckTimeoutStr := getEnv("DEFAULT_HEALTHCHECK_TIMEOUT", "60s")
+	defaultHealthcheckTimeout, err := time.ParseDuration(defaultHealthcheckTimeoutStr)
+	if err != nil {
+		defaultHealthcheckTimeout = 60 * time.Second
+	}
+	defaultHealthcheckFallback := strings.ToLower(getEnv("DEFAULT_HEALTHCHECK_FALLBACK", "disable"))
+	defaultHealthcheckEnabled := getEnvBool("DEFAULT_HEALTHCHECK_ENABLED", false)
+
+	// Proxmox VE settings
+	pveEnabled := getEnvBool("PVE_ENABLED", false)
+	pveURL := getEnv("PVE_URL", "")
+	pveTokenID := getEnv("PVE_TOKEN_ID", "")
+	pveTokenSecret := getEnv("PVE_TOKEN_SECRET", "")
+	pveVerifySSL := getEnvBool("PVE_VERIFY_SSL", false)
+	pveNode := getEnv("PVE_NODE", "")
+	pvePollIntervalStr := getEnv("PVE_POLL_INTERVAL", "15s")
+	pvePollInterval, err := time.ParseDuration(pvePollIntervalStr)
+	if err != nil {
+		pvePollInterval = 15 * time.Second
+	}
+	pvePreferredInterface := getEnv("PVE_PREFERRED_INTERFACE", "eth0")
+	pveAllowedSubnets := getEnv("PVE_ALLOWED_SUBNETS", "")
+
+	// Canonical LXD / Incus settings
+	lxdEnabled := getEnvBool("LXD_ENABLED", false)
+	defaultLXDSocket := "/var/snap/lxd/common/lxd/unix.socket"
+	if _, err := os.Stat(defaultLXDSocket); os.IsNotExist(err) {
+		if _, errIncus := os.Stat("/var/lib/incus/unix.socket"); errIncus == nil {
+			defaultLXDSocket = "/var/lib/incus/unix.socket"
+		} else if _, errApt := os.Stat("/var/lib/lxd/unix.socket"); errApt == nil {
+			defaultLXDSocket = "/var/lib/lxd/unix.socket"
+		}
+	}
+	lxdSocket := getEnv("LXD_SOCKET", defaultLXDSocket)
+	lxdPreferredInterface := getEnv("LXD_PREFERRED_INTERFACE", "eth0")
+	lxdAllowedSubnets := getEnv("LXD_ALLOWED_SUBNETS", "")
+	lxdPollIntervalStr := getEnv("LXD_POLL_INTERVAL", "15s")
+	lxdPollInterval, err := time.ParseDuration(lxdPollIntervalStr)
+	if err != nil {
+		lxdPollInterval = 15 * time.Second
+	}
+
 	cfg := &Config{
-		NPMURL:               npmURL,
-		NPMUser:              npmUser,
-		NPMPass:              npmPass,
-		NPMTimeout:           npmTimeout,
-		DockerSocket:         dockerSocket,
-		DockerTimeout:        dockerTimeout,
-		PollInterval:         pollInterval,
-		NPMNetwork:           getEnv("NPM_NETWORK", ""),
-		ForwardHostStrategy:  strings.ToLower(getEnv("FORWARD_HOST_STRATEGY", "auto")),
-		DefaultForwardScheme: strings.ToLower(getEnv("DEFAULT_FORWARD_SCHEME", "http")),
-		DefaultSSLEnabled:    getEnvBool("DEFAULT_SSL_ENABLED", false),
-		DefaultSSLForced:     getEnvBool("DEFAULT_SSL_FORCED", false),
-		DefaultWebsocket:     getEnvBool("DEFAULT_WEBSOCKET", true),
-		DefaultBlockExploits: getEnvBool("DEFAULT_BLOCK_EXPLOITS", true),
-		HostID:               hostID,
-		HostIP:               hostIP,
-		UseHostPort:          useHostPort,
-		RoutesFile:           getEnv("ROUTES_FILE", getEnv("CONFIG_FILE", "")),
-		RoutesDir:            getEnv("ROUTES_DIR", getEnv("CONFIG_DIR", "")),
-		LabelPrefix:          getEnv("LABEL_PREFIX", "npm."),
-		Port:                 port,
-		LogLevel:             strings.ToLower(getEnv("LOG_LEVEL", "info")),
+		NPMURL:                     npmURL,
+		NPMUser:                    npmUser,
+		NPMPass:                    npmPass,
+		NPMTimeout:                 npmTimeout,
+		DockerSocket:               dockerSocket,
+		DockerTimeout:              dockerTimeout,
+		PollInterval:               pollInterval,
+		NPMNetwork:                 getEnv("NPM_NETWORK", ""),
+		ForwardHostStrategy:        strings.ToLower(getEnv("FORWARD_HOST_STRATEGY", "auto")),
+		DefaultForwardScheme:       strings.ToLower(getEnv("DEFAULT_FORWARD_SCHEME", "http")),
+		DefaultSSLEnabled:          getEnvBool("DEFAULT_SSL_ENABLED", false),
+		DefaultSSLForced:           getEnvBool("DEFAULT_SSL_FORCED", false),
+		DefaultWebsocket:           getEnvBool("DEFAULT_WEBSOCKET", true),
+		DefaultBlockExploits:       getEnvBool("DEFAULT_BLOCK_EXPLOITS", true),
+		DefaultHealthcheckEnabled:  defaultHealthcheckEnabled,
+		DefaultHealthcheckTimeout:  defaultHealthcheckTimeout,
+		DefaultHealthcheckFallback: defaultHealthcheckFallback,
+		HostID:                     hostID,
+		HostIP:                     hostIP,
+		UseHostPort:                useHostPort,
+		RoutesFile:                 getEnv("ROUTES_FILE", getEnv("CONFIG_FILE", "")),
+		RoutesDir:                  getEnv("ROUTES_DIR", getEnv("CONFIG_DIR", "")),
+		PVEEnabled:                 pveEnabled,
+		PVEURL:                     pveURL,
+		PVETokenID:                 pveTokenID,
+		PVETokenSecret:             pveTokenSecret,
+		PVEVerifySSL:               pveVerifySSL,
+		PVENode:                    pveNode,
+		PVEPollInterval:            pvePollInterval,
+		PVEPreferredInterface:      pvePreferredInterface,
+		PVEAllowedSubnets:          pveAllowedSubnets,
+		LXDEnabled:                 lxdEnabled,
+		LXDSocket:                  lxdSocket,
+		LXDPreferredInterface:      lxdPreferredInterface,
+		LXDAllowedSubnets:          lxdAllowedSubnets,
+		LXDPollInterval:            lxdPollInterval,
+		LabelPrefix:                getEnv("LABEL_PREFIX", "npm."),
+		Port:                       port,
+		LogLevel:                   strings.ToLower(getEnv("LOG_LEVEL", "info")),
 	}
 
 	// Basic validation
