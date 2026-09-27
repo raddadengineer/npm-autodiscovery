@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/raddadengineer/npm-autodiscovery/internal/config"
@@ -45,6 +46,10 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/events/stream", s.handleEventsStream)
 	mux.HandleFunc("/api/events", s.handleEventsHistory)
 	mux.HandleFunc("/api/config", s.handleConfig)
+
+	// Multi-Node Cluster Control Plane Routes
+	mux.HandleFunc("/api/cluster/nodes", s.handleClusterNodes)
+	mux.HandleFunc("/api/cluster/report", s.handleClusterReport)
 
 	// Prometheus Metrics Endpoint (Phase 1)
 	mux.HandleFunc("/metrics", s.handleMetrics)
@@ -118,6 +123,16 @@ func (s *Server) handleProxies(w http.ResponseWriter, r *http.Request) {
 	}
 
 	proxies := s.syncer.GetTrackedProxies()
+	if nodeFilter := strings.TrimSpace(r.URL.Query().Get("node")); nodeFilter != "" && nodeFilter != "all" {
+		filtered := make([]*syncer.ManagedProxy, 0)
+		for _, p := range proxies {
+			if strings.EqualFold(p.HostID, nodeFilter) {
+				filtered = append(filtered, p)
+			}
+		}
+		proxies = filtered
+	}
+
 	s.writeJSON(w, http.StatusOK, map[string]interface{}{
 		"proxies": proxies,
 		"count":   len(proxies),
@@ -132,6 +147,16 @@ func (s *Server) handleStreams(w http.ResponseWriter, r *http.Request) {
 	}
 
 	streams := s.syncer.GetTrackedStreams()
+	if nodeFilter := strings.TrimSpace(r.URL.Query().Get("node")); nodeFilter != "" && nodeFilter != "all" {
+		filtered := make([]*syncer.ManagedStream, 0)
+		for _, st := range streams {
+			if strings.EqualFold(st.HostID, nodeFilter) {
+				filtered = append(filtered, st)
+			}
+		}
+		streams = filtered
+	}
+
 	s.writeJSON(w, http.StatusOK, map[string]interface{}{
 		"streams": streams,
 		"count":   len(streams),
@@ -151,6 +176,16 @@ func (s *Server) handleContainers(w http.ResponseWriter, r *http.Request) {
 			"error": err.Error(),
 		})
 		return
+	}
+
+	if nodeFilter := strings.TrimSpace(r.URL.Query().Get("node")); nodeFilter != "" && nodeFilter != "all" {
+		filtered := make([]syncer.ContainerStatusView, 0)
+		for _, c := range containers {
+			if strings.EqualFold(c.NodeID, nodeFilter) {
+				filtered = append(filtered, c)
+			}
+		}
+		containers = filtered
 	}
 
 	s.writeJSON(w, http.StatusOK, map[string]interface{}{
@@ -251,6 +286,71 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 // handleMetrics serves standard Prometheus metrics.
 func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	metrics.Handler().ServeHTTP(w, r)
+}
+
+// handleClusterNodes returns all nodes participating in the multi-host cluster.
+func (s *Server) handleClusterNodes(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	nodes := s.syncer.GetClusterNodes()
+	onlineCount := 0
+	for _, n := range nodes {
+		if n.Status == "online" {
+			onlineCount++
+		}
+	}
+
+	s.writeJSON(w, http.StatusOK, map[string]interface{}{
+		"nodes":        nodes,
+		"count":        len(nodes),
+		"online_count": onlineCount,
+	})
+}
+
+// handleClusterReport ingests telemetry pushed from a remote worker node.
+func (s *Server) handleClusterReport(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Verify pre-shared cluster authentication token if configured
+	if s.cfg.ClusterToken != "" {
+		token := r.Header.Get("X-Cluster-Token")
+		if token == "" {
+			authHeader := r.Header.Get("Authorization")
+			token = strings.TrimPrefix(authHeader, "Bearer ")
+		}
+		if token != s.cfg.ClusterToken {
+			http.Error(w, "Unauthorized: Invalid cluster authentication token", http.StatusUnauthorized)
+			return
+		}
+	}
+
+	var report syncer.NodeReport
+	if err := json.NewDecoder(r.Body).Decode(&report); err != nil {
+		http.Error(w, fmt.Sprintf("Invalid JSON telemetry payload: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	if strings.TrimSpace(report.NodeID) == "" {
+		http.Error(w, "Field 'node_id' is required", http.StatusBadRequest)
+		return
+	}
+
+	if err := s.syncer.RegisterNodeReport(report); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	s.writeJSON(w, http.StatusOK, map[string]interface{}{
+		"status":  "ok",
+		"message": "Telemetry report successfully ingested",
+		"node_id": report.NodeID,
+	})
 }
 
 func (s *Server) writeJSON(w http.ResponseWriter, code int, data interface{}) {

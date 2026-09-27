@@ -63,11 +63,11 @@ type ContainerProxyConfig struct {
 	ForwardHost           string
 	ForwardPort           int
 	SSLEnabled            bool
+	ExplicitSSLEnabled    bool
 	SSLForced             bool
+	ExplicitSSLForced     bool
 	CertificateID         interface{}
-	ExplicitCertID        bool // True if certificate_id label was provided and not "auto"
-	ExplicitSSL           bool // True if ssl.enabled/ssl label was explicitly specified
-	ExplicitForced        bool // True if ssl.forced label was explicitly specified
+	ExplicitCertID        bool
 	AllowWebsocketUpgrade bool
 	BlockExploits         bool
 	CachingEnabled        bool
@@ -175,35 +175,34 @@ func ParseContainerLabels(c *docker.ContainerInspect, cfg *config.Config) (*Cont
 
 	// SSL Enabled
 	sslEnabled := cfg.DefaultSSLEnabled
-	explicitSSL := false
+	explicitSSLEnabled := false
 	if val, ok := getLabelValue(labels, cfg.LabelPrefix, "ssl.enabled", "ssl", "tls"); ok {
 		sslEnabled = parseBool(val, sslEnabled)
-		explicitSSL = true
+		explicitSSLEnabled = true
 	}
 
 	// SSL Forced
 	sslForced := cfg.DefaultSSLForced
-	explicitForced := false
+	explicitSSLForced := false
 	if val, ok := getLabelValue(labels, cfg.LabelPrefix, "ssl.forced", "ssl_forced", "force_ssl"); ok {
 		sslForced = parseBool(val, sslForced)
-		explicitForced = true
+		explicitSSLForced = true
 	}
 
 	// Certificate ID
 	var certID interface{} = 0
 	explicitCertID := false
 	if val, ok := getLabelValue(labels, cfg.LabelPrefix, "certificate_id", "ssl.certificate_id", "cert_id"); ok {
+		explicitCertID = true
 		val = strings.TrimSpace(val)
-		if strings.EqualFold(val, "auto") {
-			explicitCertID = false
-			certID = 0
-		} else if val != "" {
-			explicitCertID = true
+		if val != "" && val != "none" && val != "off" && val != "0" {
 			if idNum, err := strconv.Atoi(val); err == nil {
 				certID = idNum
 			} else {
 				certID = val
 			}
+		} else if val == "none" || val == "off" || val == "0" {
+			certID = 0
 		}
 	}
 
@@ -358,11 +357,11 @@ func ParseContainerLabels(c *docker.ContainerInspect, cfg *config.Config) (*Cont
 		ForwardHost:           forwardHost,
 		ForwardPort:           port,
 		SSLEnabled:            sslEnabled,
+		ExplicitSSLEnabled:    explicitSSLEnabled,
 		SSLForced:             sslForced,
+		ExplicitSSLForced:     explicitSSLForced,
 		CertificateID:         certID,
 		ExplicitCertID:        explicitCertID,
-		ExplicitSSL:           explicitSSL,
-		ExplicitForced:        explicitForced,
 		AllowWebsocketUpgrade: websocket,
 		BlockExploits:         blockExploits,
 		CachingEnabled:        caching,

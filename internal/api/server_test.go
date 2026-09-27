@@ -95,3 +95,54 @@ func TestStreamsEndpoint(t *testing.T) {
 	}
 }
 
+func TestClusterReportAndNodesEndpoints(t *testing.T) {
+	cfg := &config.Config{
+		HostID:       "controller-node",
+		HostIP:       "192.168.1.10",
+		Port:         8080,
+		NPMURL:       "http://127.0.0.1:81",
+		ClusterToken: "super-secret-token",
+	}
+
+	syncEngine := syncer.NewSyncer(cfg, nil, nil)
+	srv := NewServer(cfg, syncEngine, nil)
+
+	// 1. Test POST /api/cluster/report without token (should be 401 Unauthorized)
+	reportJSON := `{"node_id":"worker-node-1","node_ip":"192.168.1.50"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/cluster/report", strings.NewReader(reportJSON))
+	rr := httptest.NewRecorder()
+	srv.handleClusterReport(rr, req)
+
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("expected HTTP 401 Unauthorized without token, got %d", rr.Code)
+	}
+
+	// 2. Test POST /api/cluster/report with valid token
+	req = httptest.NewRequest(http.MethodPost, "/api/cluster/report", strings.NewReader(reportJSON))
+	req.Header.Set("X-Cluster-Token", "super-secret-token")
+	rr = httptest.NewRecorder()
+	srv.handleClusterReport(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected HTTP 200 OK with valid token, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	// 3. Test GET /api/cluster/nodes
+	req = httptest.NewRequest(http.MethodGet, "/api/cluster/nodes", nil)
+	rr = httptest.NewRecorder()
+	srv.handleClusterNodes(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected HTTP 200 OK from /api/cluster/nodes, got %d", rr.Code)
+	}
+
+	body := rr.Body.String()
+	if !strings.Contains(body, "controller-node") || !strings.Contains(body, "worker-node-1") {
+		t.Errorf("cluster nodes response missing nodes: %s", body)
+	}
+	if !strings.Contains(body, `"count":2`) {
+		t.Errorf("expected count 2 in response: %s", body)
+	}
+}
+
+

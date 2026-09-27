@@ -107,10 +107,13 @@ func main() {
 	// 7. Initialize Syncer
 	syncerEngine := syncer.NewSyncerWithProviders(cfg, dockerClient, npmClient, pveClient, lxdClient)
 
-	// 8. Initialize HTTP Server
-	apiServer := api.NewServer(cfg, syncerEngine, webFS)
+	// 8. Initialize HTTP Server (if Dashboard is enabled)
+	var apiServer *api.Server
+	if cfg.DashboardEnabled {
+		apiServer = api.NewServer(cfg, syncerEngine, webFS)
+	}
 
-	// 7. Setup Context & Graceful Shutdown
+	// 9. Setup Context & Graceful Shutdown
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -120,15 +123,21 @@ func main() {
 	// Start Syncer Engine
 	go syncerEngine.Start(ctx)
 
-	// Start API & Dashboard HTTP Server
+	// Start API & Dashboard HTTP Server if enabled
 	serverErrChan := make(chan error, 1)
-	go func() {
-		if err := apiServer.Start(); err != nil && err != http.ErrServerClosed {
-			serverErrChan <- err
+	if cfg.DashboardEnabled && apiServer != nil {
+		go func() {
+			if err := apiServer.Start(); err != nil && err != http.ErrServerClosed {
+				serverErrChan <- err
+			}
+		}()
+		log.Printf("[info] NPM Auto-Discovery engine running. Dashboard ready on http://localhost:%d", cfg.Port)
+	} else {
+		log.Println("[info] Node Dashboard & HTTP server disabled (Headless Worker Agent mode: zero open listening ports).")
+		if cfg.MainNodeURL != "" {
+			log.Printf("[info] Operating as Remote Worker Agent -> streaming telemetry & heartbeats to %s", cfg.MainNodeURL)
 		}
-	}()
-
-	log.Printf("[info] NPM Auto-Discovery engine running. Dashboard ready on http://localhost:%d", cfg.Port)
+	}
 
 	// Wait for shutdown signal or fatal server error
 	select {
@@ -143,8 +152,10 @@ func main() {
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer shutdownCancel()
 
-	if err := apiServer.Stop(shutdownCtx); err != nil {
-		log.Printf("[warn] HTTP server shutdown error: %v", err)
+	if cfg.DashboardEnabled && apiServer != nil {
+		if err := apiServer.Stop(shutdownCtx); err != nil {
+			log.Printf("[warn] HTTP server shutdown error: %v", err)
+		}
 	}
 
 	log.Println("[info] NPM Auto-Discovery shut down cleanly.")

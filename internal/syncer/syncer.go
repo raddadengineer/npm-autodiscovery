@@ -42,9 +42,10 @@ type LogEvent struct {
 	ID        int64     `json:"id"`
 	Timestamp time.Time `json:"timestamp"`
 	Level     LogLevel  `json:"level"`
-	Category  string    `json:"category"` // "discovery", "sync", "docker", "npm", "system", "health", "pve", "lxd"
+	Category  string    `json:"category"` // "discovery", "sync", "docker", "npm", "system", "health", "pve", "lxd", "cluster"
 	Message   string    `json:"message"`
 	Details   string    `json:"details,omitempty"`
+	NodeID    string    `json:"node_id,omitempty"`
 }
 
 // ManagedProxy tracks a single auto-discovered proxy host state.
@@ -104,6 +105,7 @@ type ContainerStatusView struct {
 	Domains       []string          `json:"domains,omitempty"`
 	Port          int               `json:"port,omitempty"`
 	Labels        map[string]string `json:"labels"`
+	NodeID        string            `json:"node_id,omitempty"`
 }
 
 // StatusOverview reports system health and counters.
@@ -137,6 +139,10 @@ type StatusOverview struct {
 	LXDServerType        string `json:"lxd_server_type,omitempty"`
 	LXDVersion           string `json:"lxd_version,omitempty"`
 	LXDRunningContainers int    `json:"lxd_running_containers"`
+
+	// Multi-Node Cluster Overview (Central Controller)
+	ClusterNodesCount  int `json:"cluster_nodes_count,omitempty"`
+	ClusterOnlineNodes int `json:"cluster_online_nodes,omitempty"`
 }
 
 // PendingHealthCheck tracks containers in warming up/starting state awaiting healthy before provisioning.
@@ -172,26 +178,30 @@ type Syncer struct {
 	totalEvents    int64
 	dockerVersion  string
 
-	syncTrigger chan struct{}
+	syncTrigger       chan struct{}
+	workerPushTrigger chan struct{}
+	clusterRegistry   *ClusterRegistry
 
-	certCache       []npm.Certificate
-	certCacheExpiry time.Time
-	certCacheMu     sync.RWMutex
+	certCacheMutex   sync.RWMutex
+	cachedCerts      []npm.Certificate
+	certCacheExpires time.Time
 }
 
 // NewSyncer instantiates the syncer with dependencies.
 func NewSyncer(cfg *config.Config, dClient *docker.Client, nClient *npm.Client) *Syncer {
 	return &Syncer{
-		cfg:            cfg,
-		dockerClient:   dClient,
-		npmClient:      nClient,
-		trackedProxies: make(map[string]*ManagedProxy),
-		trackedStreams: make(map[int]*ManagedStream),
-		pendingHealth:  make(map[string]*PendingHealthCheck),
-		logEvents:      make([]LogEvent, 0, MaxLogsHistory),
-		logSubscribers: make(map[chan LogEvent]struct{}),
-		startTime:      time.Now(),
-		syncTrigger:    make(chan struct{}, 1),
+		cfg:               cfg,
+		dockerClient:      dClient,
+		npmClient:         nClient,
+		trackedProxies:    make(map[string]*ManagedProxy),
+		trackedStreams:    make(map[int]*ManagedStream),
+		pendingHealth:     make(map[string]*PendingHealthCheck),
+		logEvents:         make([]LogEvent, 0, MaxLogsHistory),
+		logSubscribers:    make(map[chan LogEvent]struct{}),
+		startTime:         time.Now(),
+		syncTrigger:       make(chan struct{}, 1),
+		workerPushTrigger: make(chan struct{}, 1),
+		clusterRegistry:   NewClusterRegistry(),
 	}
 }
 
@@ -271,6 +281,11 @@ func (s *Syncer) Start(ctx context.Context) {
 
 	// 2. Periodic Scan & Trigger Goroutine
 	go s.runPeriodicSync(ctx)
+
+	// 3. Multi-Node Cluster Telemetry Pusher (if running in Remote Worker mode)
+	if s.cfg.MainNodeURL != "" {
+		go s.startWorkerReporter(ctx)
+	}
 }
 
 // listenLXDEvents listens for real-time lifecycle events from Canonical LXD / Incus.
@@ -309,6 +324,7 @@ func (s *Syncer) TriggerSync() {
 	case s.syncTrigger <- struct{}{}:
 	default:
 	}
+	s.triggerWorkerPush()
 }
 
 // runPeriodicSync loops on the poll timer and manual sync signals.
@@ -606,18 +622,25 @@ func (s *Syncer) cancelPendingHealthCheck(containerID string) {
 	}
 }
 
-// getCertificates retrieves all SSL certificates from NPM with TTL caching.
+// getCertificates retrieves cached SSL certificates or queries NPM API.
 func (s *Syncer) getCertificates(ctx context.Context) ([]npm.Certificate, error) {
-	s.certCacheMu.RLock()
-	if time.Now().Before(s.certCacheExpiry) && s.certCache != nil {
-		certs := s.certCache
-		s.certCacheMu.RUnlock()
+	if s.npmClient == nil {
+		return nil, nil
+	}
+
+	s.certCacheMutex.RLock()
+	if time.Now().Before(s.certCacheExpires) && s.cachedCerts != nil {
+		certs := s.cachedCerts
+		s.certCacheMutex.RUnlock()
 		return certs, nil
 	}
-	s.certCacheMu.RUnlock()
+	s.certCacheMutex.RUnlock()
 
-	if s.npmClient == nil {
-		return nil, fmt.Errorf("npm client is nil")
+	s.certCacheMutex.Lock()
+	defer s.certCacheMutex.Unlock()
+
+	if time.Now().Before(s.certCacheExpires) && s.cachedCerts != nil {
+		return s.cachedCerts, nil
 	}
 
 	certs, err := s.npmClient.GetCertificates(ctx)
@@ -625,54 +648,29 @@ func (s *Syncer) getCertificates(ctx context.Context) ([]npm.Certificate, error)
 		return nil, err
 	}
 
-	s.certCacheMu.Lock()
-	s.certCache = certs
-	s.certCacheExpiry = time.Now().Add(30 * time.Second)
-	s.certCacheMu.Unlock()
-
+	s.cachedCerts = certs
+	s.certCacheExpires = time.Now().Add(30 * time.Second)
 	return certs, nil
 }
 
-// resolveCertificate determines the appropriate SSL certificate ID based on explicit settings or domain auto-matching.
-func (s *Syncer) resolveCertificate(ctx context.Context, domains []string, explicitCertID bool, currentCertID interface{}, explicitSSL bool, currentSSL bool, explicitForced bool, currentForced bool) (interface{}, bool, bool) {
-	// 1. Explicit certificate ID provided by user label/config (not "auto")
-	if explicitCertID {
-		return currentCertID, currentSSL, currentForced
+// applyAutoDetectSSL checks if domains match an existing certificate in NPM and assigns it if no explicit certificate_id was set.
+func (s *Syncer) applyAutoDetectSSL(ctx context.Context, domains []string, certID *interface{}, sslForced *bool, explicitCert bool, explicitForced bool) {
+	if explicitCert || (*certID != 0 && *certID != nil && *certID != "") || !s.cfg.AutoDetectSSL {
+		return
 	}
 
-	// 2. SSL explicitly disabled by user (e.g. npm.ssl=false or npm.ssl.enabled=false)
-	if explicitSSL && !currentSSL {
-		return 0, false, false
-	}
-
-	// 3. Auto-certificate discovery disabled globally
-	if !s.cfg.AutoCertificate {
-		return currentCertID, currentSSL, currentForced
-	}
-
-	// 4. Query NPM certificates and match against domains
 	certs, err := s.getCertificates(ctx)
-	if err != nil {
-		s.EmitLog(LevelWarn, "ssl", fmt.Sprintf("Failed to query NPM certificates for auto-discovery: %v", err), "")
-		return currentCertID, currentSSL, currentForced
+	if err != nil || len(certs) == 0 {
+		return
 	}
 
-	if len(certs) == 0 {
-		return 0, currentSSL, currentForced
-	}
-
-	matchedCert := FindBestMatchingCertificateForDomains(certs, domains)
-	if matchedCert != nil {
-		forced := currentForced
-		if !explicitForced && s.cfg.AutoSSLForced {
-			forced = true
-		}
+	if matchedCert := MatchCertificate(certs, domains); matchedCert != nil {
 		s.EmitLog(LevelInfo, "ssl", fmt.Sprintf("Auto-detected SSL certificate #%d (%s) for %v", matchedCert.ID, matchedCert.NiceName, domains), "")
-		return matchedCert.ID, true, forced
+		*certID = matchedCert.ID
+		if !explicitForced && s.cfg.AutoSSLForced {
+			*sslForced = true
+		}
 	}
-
-	// No matching certificate found (e.g. .local domain): defaults to HTTP only
-	return 0, false, false
 }
 
 // reconcileProxyInNPM checks if proxy host already exists, creates or updates as needed.
@@ -680,6 +678,13 @@ func (s *Syncer) reconcileProxyInNPM(ctx context.Context, inspect *docker.Contai
 	if s.npmClient == nil {
 		return
 	}
+
+	// Auto-detect SSL certificate matching domains if not explicitly configured
+	s.applyAutoDetectSSL(ctx, proxyCfg.DomainNames, &proxyCfg.CertificateID, &proxyCfg.SSLForced, proxyCfg.ExplicitCertID, proxyCfg.ExplicitSSLForced)
+	if proxyCfg.CertificateID != 0 && proxyCfg.CertificateID != nil {
+		proxyCfg.SSLEnabled = true
+	}
+
 	// Fetch all current proxy hosts from NPM
 	existingHosts, err := s.npmClient.GetProxyHosts(ctx)
 	if err != nil {
@@ -712,21 +717,6 @@ func (s *Syncer) reconcileProxyInNPM(ctx context.Context, inspect *docker.Contai
 			AdvancedConfig: loc.AdvancedConfig,
 		})
 	}
-
-	// Auto-detect and resolve SSL certificate if applicable
-	certID, sslEnabled, sslForced := s.resolveCertificate(
-		ctx,
-		proxyCfg.DomainNames,
-		proxyCfg.ExplicitCertID,
-		proxyCfg.CertificateID,
-		proxyCfg.ExplicitSSL,
-		proxyCfg.SSLEnabled,
-		proxyCfg.ExplicitForced,
-		proxyCfg.SSLForced,
-	)
-	proxyCfg.CertificateID = certID
-	proxyCfg.SSLEnabled = sslEnabled
-	proxyCfg.SSLForced = sslForced
 
 	desiredReq := &npm.ProxyHostRequest{
 		DomainNames:           proxyCfg.DomainNames,
@@ -1447,6 +1437,8 @@ func (s *Syncer) performFullSync(ctx context.Context, triggerSource string) {
 		syncedPVECount,
 		syncedLXDCount,
 		len(allDockerStreams)+len(allIaCStreams)+len(allPVEStreams)+len(allLXDStreams)), "")
+
+	s.triggerWorkerPush()
 }
 
 // syncIaCRoutes loads and applies declarative routes from static YAML/JSON manifests.
@@ -1520,11 +1512,11 @@ func (s *Syncer) reconcileIaCHost(ctx context.Context, sh iac.StaticProxyHost) {
 		})
 	}
 
-	explicitCert := sh.CertificateID != nil && sh.CertificateID != 0 && sh.CertificateID != "0" && !strings.EqualFold(fmt.Sprintf("%v", sh.CertificateID), "auto")
-	certID, sslEnabled, sslForced := s.resolveCertificate(ctx, sh.DomainNames, explicitCert, sh.CertificateID, false, sh.SSLEnabled, false, sh.SSLForced)
-	sh.CertificateID = certID
-	sh.SSLEnabled = sslEnabled
-	sh.SSLForced = sslForced
+	// Auto-detect SSL certificate if not explicitly set
+	s.applyAutoDetectSSL(ctx, sh.DomainNames, &sh.CertificateID, &sh.SSLForced, sh.CertificateID != nil && sh.CertificateID != 0 && sh.CertificateID != "", sh.SSLForced)
+	if sh.CertificateID != 0 && sh.CertificateID != nil {
+		sh.SSLEnabled = true
+	}
 
 	desiredReq := &npm.ProxyHostRequest{
 		DomainNames:           sh.DomainNames,
@@ -1664,11 +1656,11 @@ func (s *Syncer) reconcilePVERoute(ctx context.Context, route pve.PVERoute) {
 		})
 	}
 
-	explicitCert := route.CertificateID != nil && route.CertificateID != 0 && route.CertificateID != "0" && !strings.EqualFold(fmt.Sprintf("%v", route.CertificateID), "auto")
-	certID, sslEnabled, sslForced := s.resolveCertificate(ctx, route.DomainNames, explicitCert, route.CertificateID, false, route.SSLEnabled, false, route.SSLForced)
-	route.CertificateID = certID
-	route.SSLEnabled = sslEnabled
-	route.SSLForced = sslForced
+	// Auto-detect SSL certificate if not explicitly set
+	s.applyAutoDetectSSL(ctx, route.DomainNames, &route.CertificateID, &route.SSLForced, route.CertificateID != nil && route.CertificateID != 0 && route.CertificateID != "", route.SSLForced)
+	if route.CertificateID != 0 && route.CertificateID != nil {
+		route.SSLEnabled = true
+	}
 
 	desiredReq := &npm.ProxyHostRequest{
 		DomainNames:           route.DomainNames,
@@ -1809,11 +1801,11 @@ func (s *Syncer) reconcileLXDRoute(ctx context.Context, route lxd.LXDRoute) {
 		})
 	}
 
-	explicitCert := route.CertificateID != nil && route.CertificateID != 0 && route.CertificateID != "0" && !strings.EqualFold(fmt.Sprintf("%v", route.CertificateID), "auto")
-	certID, sslEnabled, sslForced := s.resolveCertificate(ctx, route.DomainNames, explicitCert, route.CertificateID, false, route.SSLEnabled, false, route.SSLForced)
-	route.CertificateID = certID
-	route.SSLEnabled = sslEnabled
-	route.SSLForced = sslForced
+	// Auto-detect SSL certificate if not explicitly set
+	s.applyAutoDetectSSL(ctx, route.DomainNames, &route.CertificateID, &route.SSLForced, route.CertificateID != nil && route.CertificateID != 0 && route.CertificateID != "", route.SSLForced)
+	if route.CertificateID != 0 && route.CertificateID != nil {
+		route.SSLEnabled = true
+	}
 
 	desiredReq := &npm.ProxyHostRequest{
 		DomainNames:           route.DomainNames,
@@ -1998,11 +1990,15 @@ func (s *Syncer) removeTrackedStream(incomingPort int) {
 // GetTrackedStreams returns a slice of currently tracked Layer 4 streams.
 func (s *Syncer) GetTrackedStreams() []*ManagedStream {
 	s.mu.RLock()
-	defer s.mu.RUnlock()
-
 	streams := make([]*ManagedStream, 0, len(s.trackedStreams))
 	for _, st := range s.trackedStreams {
 		streams = append(streams, st)
+	}
+	s.mu.RUnlock()
+
+	if s.clusterRegistry != nil {
+		remote := s.clusterRegistry.GetRemoteStreams()
+		streams = append(streams, remote...)
 	}
 
 	sort.Slice(streams, func(i, j int) bool {
@@ -2030,11 +2026,15 @@ func (s *Syncer) removeTrackedProxy(containerID string, domainNames []string) {
 // GetTrackedProxies returns a slice of currently tracked auto-discovered proxies.
 func (s *Syncer) GetTrackedProxies() []*ManagedProxy {
 	s.mu.RLock()
-	defer s.mu.RUnlock()
-
 	proxies := make([]*ManagedProxy, 0, len(s.trackedProxies))
 	for _, p := range s.trackedProxies {
 		proxies = append(proxies, p)
+	}
+	s.mu.RUnlock()
+
+	if s.clusterRegistry != nil {
+		remote := s.clusterRegistry.GetRemoteProxies()
+		proxies = append(proxies, remote...)
 	}
 
 	sort.Slice(proxies, func(i, j int) bool {
@@ -2122,6 +2122,19 @@ func (s *Syncer) GetStatusOverview(ctx context.Context) StatusOverview {
 		s.mu.RUnlock()
 	}
 
+	clusterNodesCount := 1
+	clusterOnlineCount := 1
+	if s.clusterRegistry != nil {
+		nodes := s.clusterRegistry.GetNodes(ClusterNodeInfo{NodeID: hID, Status: "online"})
+		clusterNodesCount = len(nodes)
+		clusterOnlineCount = 0
+		for _, n := range nodes {
+			if n.Status == "online" {
+				clusterOnlineCount++
+			}
+		}
+	}
+
 	return StatusOverview{
 		HostID:               hID,
 		HostIP:               hIP,
@@ -2148,11 +2161,13 @@ func (s *Syncer) GetStatusOverview(ctx context.Context) StatusOverview {
 		LXDServerType:        lxdServerType,
 		LXDVersion:           lxdVer,
 		LXDRunningContainers: lxdRunningCount,
+		ClusterNodesCount:    clusterNodesCount,
+		ClusterOnlineNodes:   clusterOnlineCount,
 	}
 }
 
-// GetContainersView lists all running containers across Docker, Proxmox LXC, and LXD/Incus.
-func (s *Syncer) GetContainersView(ctx context.Context) ([]ContainerStatusView, error) {
+// getLocalContainersView lists all running containers on this local host (Docker, Proxmox LXC, LXD/Incus).
+func (s *Syncer) getLocalContainersView(ctx context.Context) ([]ContainerStatusView, error) {
 	views := make([]ContainerStatusView, 0)
 
 	// 1. Docker Containers
@@ -2177,6 +2192,7 @@ func (s *Syncer) GetContainersView(ctx context.Context) ([]ContainerStatusView, 
 						Discovered:    false,
 						IgnoredReason: "Failed to inspect container",
 						Labels:        c.Labels,
+						NodeID:        s.cfg.HostID,
 					})
 					continue
 				}
@@ -2214,6 +2230,7 @@ func (s *Syncer) GetContainersView(ctx context.Context) ([]ContainerStatusView, 
 					Domains:       domains,
 					Port:          port,
 					Labels:        c.Labels,
+					NodeID:        s.cfg.HostID,
 				})
 			}
 		}
@@ -2260,6 +2277,7 @@ func (s *Syncer) GetContainersView(ctx context.Context) ([]ContainerStatusView, 
 			Domains:       domains,
 			Port:          port,
 			Labels:        tagsMeta,
+			NodeID:        s.cfg.HostID,
 		})
 	}
 
@@ -2302,7 +2320,23 @@ func (s *Syncer) GetContainersView(ctx context.Context) ([]ContainerStatusView, 
 			Domains:       domains,
 			Port:          port,
 			Labels:        tagsMeta,
+			NodeID:        s.cfg.HostID,
 		})
+	}
+
+	return views, nil
+}
+
+// GetContainersView lists all running containers across Docker, Proxmox LXC, and LXD/Incus, including remote cluster nodes.
+func (s *Syncer) GetContainersView(ctx context.Context) ([]ContainerStatusView, error) {
+	views, err := s.getLocalContainersView(ctx)
+	if err != nil {
+		views = make([]ContainerStatusView, 0)
+	}
+
+	if s.clusterRegistry != nil {
+		remote := s.clusterRegistry.GetRemoteContainers()
+		views = append(views, remote...)
 	}
 
 	return views, nil
@@ -2319,6 +2353,7 @@ func (s *Syncer) EmitLog(level LogLevel, category, message, details string) {
 		Category:  category,
 		Message:   message,
 		Details:   details,
+		NodeID:    s.cfg.HostID,
 	}
 
 	if len(s.logEvents) >= MaxLogsHistory {
@@ -2344,6 +2379,46 @@ func (s *Syncer) EmitLog(level LogLevel, category, message, details string) {
 		}
 	}
 }
+
+// EmitExternalLog broadcasts a log event received from a remote worker node.
+func (s *Syncer) EmitExternalLog(event LogEvent) {
+	s.mu.Lock()
+	s.logSeq++
+	event.ID = s.logSeq
+	if len(s.logEvents) >= MaxLogsHistory {
+		s.logEvents = s.logEvents[1:]
+	}
+	s.logEvents = append(s.logEvents, event)
+
+	subscribers := make([]chan LogEvent, 0, len(s.logSubscribers))
+	for ch := range s.logSubscribers {
+		subscribers = append(subscribers, ch)
+	}
+	s.mu.Unlock()
+
+	for _, ch := range subscribers {
+		select {
+		case ch <- event:
+		default:
+			// Drop if subscriber channel is blocked
+		}
+	}
+}
+
+// GetRecentEventsSince returns log events that occurred after the given timestamp.
+func (s *Syncer) GetRecentEventsSince(since time.Time) []LogEvent {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var result []LogEvent
+	for _, ev := range s.logEvents {
+		if ev.Timestamp.After(since) {
+			result = append(result, ev)
+		}
+	}
+	return result
+}
+
 
 // GetLogEvents returns recent log history.
 func (s *Syncer) GetLogEvents(limit int) []LogEvent {

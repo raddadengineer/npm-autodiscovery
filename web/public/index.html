@@ -40,6 +40,20 @@
           <span class="status-label">Node:</span>
           <span class="status-val" id="node-id-text">detecting...</span>
         </div>
+        <div class="status-pill" id="cluster-status-pill" title="Cluster Nodes Status — Click to switch to Cluster view" style="cursor: pointer;">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2">
+            <circle cx="12" cy="12" r="3"></circle>
+            <circle cx="19" cy="6" r="2"></circle>
+            <circle cx="5" cy="6" r="2"></circle>
+            <circle cx="5" cy="18" r="2"></circle>
+            <circle cx="19" cy="18" r="2"></circle>
+            <line x1="12" y1="9" x2="12" y2="15"></line>
+            <line x1="7" y1="6" x2="17" y2="6"></line>
+            <line x1="7" y1="18" x2="17" y2="18"></line>
+          </svg>
+          <span class="status-label">Cluster:</span>
+          <span class="status-val" id="cluster-status-text" style="color: #c4b5fd;">1 Node</span>
+        </div>
         <div class="status-pill" id="docker-status-pill" title="Docker Socket Connection">
           <span class="status-dot ping-dot"></span>
           <span class="status-label">Docker:</span>
@@ -237,6 +251,21 @@
           <span class="tab-counter" id="tab-containers-count">0</span>
         </button>
 
+        <button class="tab-btn" data-tab="cluster-view">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"></circle>
+            <circle cx="19" cy="6" r="2"></circle>
+            <circle cx="5" cy="6" r="2"></circle>
+            <circle cx="5" cy="18" r="2"></circle>
+            <circle cx="19" cy="18" r="2"></circle>
+            <line x1="12" y1="9" x2="12" y2="15"></line>
+            <line x1="7" y1="6" x2="17" y2="6"></line>
+            <line x1="7" y1="18" x2="17" y2="18"></line>
+          </svg>
+          <span>Cluster Nodes</span>
+          <span class="tab-counter" id="tab-cluster-count">1</span>
+        </button>
+
         <button class="tab-btn" data-tab="docs-view">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
@@ -266,6 +295,9 @@
                 </svg>
                 <input type="text" id="proxies-search" placeholder="Search domain, container, IP..." />
               </div>
+              <select id="proxies-node-filter" class="table-filter-select" title="Filter proxies by Cluster Node">
+                <option value="all">🌐 All Nodes</option>
+              </select>
             </div>
           </div>
 
@@ -324,6 +356,9 @@
                 </svg>
                 <input type="text" id="streams-search" placeholder="Search port, target, protocol..." />
               </div>
+              <select id="streams-node-filter" class="table-filter-select" title="Filter streams by Cluster Node">
+                <option value="all">🌐 All Nodes</option>
+              </select>
             </div>
           </div>
 
@@ -373,10 +408,14 @@
               <p class="panel-subtitle">Live stream of container events, discovery actions, and NPM API requests.</p>
             </div>
             <div class="panel-actions">
+              <select id="events-node-filter" class="table-filter-select" title="Filter logs by Cluster Node">
+                <option value="all">🌐 All Nodes</option>
+              </select>
               <div class="filter-group">
                 <button class="filter-btn active" data-filter="all">All</button>
                 <button class="filter-btn" data-filter="discovery">Discovery</button>
                 <button class="filter-btn" data-filter="npm">NPM API</button>
+                <button class="filter-btn" data-filter="cluster">Cluster</button>
                 <button class="filter-btn" data-filter="docker">Docker</button>
                 <button class="filter-btn" data-filter="error">Errors</button>
               </div>
@@ -411,6 +450,9 @@
                 </svg>
                 <input type="text" id="containers-search" placeholder="Filter containers..." />
               </div>
+              <select id="containers-node-filter" class="table-filter-select" title="Filter containers by Cluster Node">
+                <option value="all">🌐 All Nodes</option>
+              </select>
             </div>
           </div>
 
@@ -419,6 +461,7 @@
               <thead>
                 <tr>
                   <th>Container</th>
+                  <th>Node</th>
                   <th>Image</th>
                   <th>State</th>
                   <th>Discovery Status</th>
@@ -431,6 +474,46 @@
                 <!-- Dynamically populated -->
               </tbody>
             </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB: Cluster Infrastructure Nodes View -->
+      <section id="cluster-view" class="tab-content">
+        <div class="panel glass-panel">
+          <div class="panel-header">
+            <div class="panel-title-group">
+              <h2>Cluster Infrastructure Nodes</h2>
+              <p class="panel-subtitle">Centralized multi-host control plane aggregating Main Node and headless Remote Worker Agents.</p>
+            </div>
+            <div class="panel-actions">
+              <div class="search-input-wrap">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="11" cy="11" r="8"></circle>
+                  <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                </svg>
+                <input type="text" id="cluster-search" placeholder="Search node ID, IP, or engines..." />
+              </div>
+              <button class="btn btn-secondary btn-sm" id="refresh-cluster-btn" title="Refresh cluster nodes telemetry">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
+                </svg>
+                <span>Refresh Nodes</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="cluster-grid" id="cluster-nodes-grid">
+            <!-- Dynamically populated via renderClusterNodes() -->
+          </div>
+
+          <div class="empty-state" id="cluster-empty" style="display: none; padding: 3rem 1.5rem; text-align: center;">
+            <div class="empty-icon" style="font-size: 3rem; margin-bottom: 1rem;">🌐</div>
+            <h3 style="font-size: 1.25rem; font-weight: 700; color: var(--text-primary); margin-bottom: 0.5rem;">No Remote Worker Nodes Connected</h3>
+            <p style="color: var(--text-muted); max-width: 550px; margin: 0 auto 1.5rem auto; line-height: 1.6;">
+              Currently running in single-host controller mode. To connect a remote worker agent with its dashboard disabled, configure <code>DASHBOARD_ENABLED=false</code> and <code>MAIN_NODE_URL=http://&lt;this-node-ip&gt;:8080</code> on your worker machine.
+            </p>
+            <button class="btn btn-primary" onclick="switchTab('docs-view')">View Worker Setup Guide</button>
           </div>
         </div>
       </section>
@@ -820,6 +903,30 @@
                     <td><code>""</code></td>
                     <td>Declarative YAML file or directory of static route manifests (`routes.yaml`).</td>
                   </tr>
+                  <tr>
+                    <td><code>DASHBOARD_ENABLED</code></td>
+                    <td><span class="type-tag">bool</span></td>
+                    <td><code>true</code></td>
+                    <td>Set <code>false</code> to disable the local HTTP server &amp; dashboard (headless worker mode with 0 open ports).</td>
+                  </tr>
+                  <tr>
+                    <td><code>MAIN_NODE_URL</code></td>
+                    <td><span class="type-tag">string</span></td>
+                    <td><code>""</code></td>
+                    <td>Main Node endpoint (e.g. <code>http://192.168.1.10:8080</code>) to push worker containers, proxies, and live logs.</td>
+                  </tr>
+                  <tr>
+                    <td><code>CLUSTER_TOKEN</code></td>
+                    <td><span class="type-tag">string</span></td>
+                    <td><code>""</code></td>
+                    <td>Optional pre-shared authentication secret for cluster telemetry reports.</td>
+                  </tr>
+                  <tr>
+                    <td><code>PUSH_INTERVAL</code></td>
+                    <td><span class="type-tag">duration</span></td>
+                    <td><code>15s</code></td>
+                    <td>Frequency for worker heartbeat and telemetry push to main node.</td>
+                  </tr>
                 </tbody>
               </table>
             </div>
@@ -847,6 +954,9 @@
               </button>
               <button class="docs-subtab-btn" data-guide="standalone-guide">
                 🌐 Standalone Agent
+              </button>
+              <button class="docs-subtab-btn" data-guide="worker-guide">
+                📡 Remote Worker (Headless Push)
               </button>
             </div>
 
@@ -1067,6 +1177,63 @@ services:
 
               <button class="btn btn-secondary btn-sm" onclick="copyDocsGuideCode('standalone-guide', 'Standalone agent template copied to clipboard!')">
                 📋 Copy Standalone Template
+              </button>
+            </div>
+
+            <!-- PANE 6: Remote Worker (Headless Push) -->
+            <div class="docs-guide-pane" id="worker-guide">
+              <p class="mb-3 text-muted">Headless worker agent mode: disables local web dashboard (0 open listening ports) and pushes discovered containers, proxies, and live logs directly to your central Main Node dashboard:</p>
+              
+              <div class="code-snippet-wrap mb-3">
+                <pre><code class="language-yaml"># docker-compose.worker.yml
+version: '3.8'
+
+services:
+  npm-autodiscovery:
+    image: 'raddadengineer/npm-autodiscovery:latest'
+    container_name: npm-autodiscovery-worker
+    restart: unless-stopped
+    # Notice: No port bindings needed! Runs 100% headless with zero open ports.
+    env_file:
+      - .env
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+  worker-whoami:
+    image: 'raddadengineer/whoami:latest'
+    container_name: worker-whoami
+    restart: unless-stopped
+    ports:
+      - '8081:80'
+    labels:
+      - "npm.frontend.domain=worker.local"
+      - "npm.frontend.port=80"
+      - "npm.forward_scheme=http"</code></pre>
+              </div>
+
+              <p class="mb-2 text-muted">Worker <code>.env</code> Configuration:</p>
+              <div class="code-snippet-wrap mb-3">
+                <pre><code class="language-ini"># Point to central NPM admin API for provisioning routes
+NPM_URL=http://192.168.1.10:81
+NPM_USER=admin@example.com
+NPM_PASS=changeme
+
+# Worker identity & routing
+HOST_ID=worker-node-01
+HOST_IP=192.168.1.20
+USE_HOST_PORT=true
+
+# Disable local worker web dashboard (zero open listening ports)
+DASHBOARD_ENABLED=false
+
+# Stream worker telemetry & logs to Main Node central dashboard
+MAIN_NODE_URL=http://192.168.1.10:8080
+CLUSTER_TOKEN=
+PUSH_INTERVAL=15s</code></pre>
+              </div>
+
+              <button class="btn btn-secondary btn-sm" onclick="copyDocsGuideCode('worker-guide', 'Remote worker headless template copied to clipboard!')">
+                📋 Copy Remote Worker Template
               </button>
             </div>
 

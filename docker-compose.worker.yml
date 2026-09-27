@@ -7,8 +7,11 @@ services:
     image: raddadengineer/npm-autodiscovery:latest
     container_name: npm-autodiscovery-worker
     restart: unless-stopped
-    ports:
-      - '${PORT:-8080}:${PORT:-8080}' # Worker Node Dashboard & API
+    # Web Dashboard & API Port
+    # When DASHBOARD_ENABLED=false (Headless Worker Mode), this port mapping can be safely omitted
+    # as the worker node pushes all telemetry directly to the main node with 0 open listening ports.
+    # ports:
+    #   - '${PORT:-8080}:${PORT:-8080}'
     env_file:
       - .env
     volumes:

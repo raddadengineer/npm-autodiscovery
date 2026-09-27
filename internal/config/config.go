@@ -36,8 +36,8 @@ type Config struct {
 	DefaultSSLForced     bool   `json:"default_ssl_forced"`
 	DefaultWebsocket     bool   `json:"default_websocket"`
 	DefaultBlockExploits bool   `json:"default_block_exploits"`
-	AutoCertificate      bool   `json:"auto_certificate"` // Auto-detect and match NPM SSL certificates based on domain
-	AutoSSLForced        bool   `json:"auto_ssl_forced"`  // Force HTTPS when a matching certificate is auto-detected
+	AutoDetectSSL        bool   `json:"auto_detect_ssl"`
+	AutoSSLForced        bool   `json:"auto_ssl_forced"`
 
 	// HealthCheck Routing Defaults (Phase 1)
 	DefaultHealthcheckEnabled  bool          `json:"default_healthcheck_enabled"`
@@ -74,9 +74,15 @@ type Config struct {
 	// Label Configuration
 	LabelPrefix string `json:"label_prefix"`
 
-	// Server Settings
-	Port     int    `json:"port"`
-	LogLevel string `json:"log_level"`
+	// Server & Web Dashboard Settings
+	DashboardEnabled bool   `json:"dashboard_enabled"` // If false, HTTP web server is disabled (headless worker agent)
+	Port             int    `json:"port"`
+	LogLevel         string `json:"log_level"`
+
+	// Multi-Node Cluster & Telemetry Push Settings
+	MainNodeURL  string        `json:"main_node_url"`  // URL of central main node (e.g. "http://192.168.1.10:8080") to push worker telemetry
+	ClusterToken string        `json:"-"`              // Optional pre-shared auth token for cluster communication
+	PushInterval time.Duration `json:"push_interval"`  // Interval for pushing telemetry reports to main node (Default: 15s)
 }
 
 // LoadFromEnv loads configuration from environment variables with sensible defaults.
@@ -175,6 +181,15 @@ func LoadFromEnv() (*Config, error) {
 		lxdPollInterval = 15 * time.Second
 	}
 
+	dashboardEnabled := getEnvBool("DASHBOARD_ENABLED", getEnvBool("ENABLE_DASHBOARD", getEnvBool("SERVER_ENABLED", true)))
+	mainNodeURL := strings.TrimRight(getEnv("MAIN_NODE_URL", getEnv("CLUSTER_CONTROLLER_URL", "")), "/")
+	clusterToken := getEnv("CLUSTER_TOKEN", getEnv("NODE_AUTH_TOKEN", ""))
+	pushIntervalStr := getEnv("PUSH_INTERVAL", getEnv("CLUSTER_PUSH_INTERVAL", "15s"))
+	pushInterval, err := time.ParseDuration(pushIntervalStr)
+	if err != nil {
+		pushInterval = 15 * time.Second
+	}
+
 	cfg := &Config{
 		NPMURL:                     npmURL,
 		NPMUser:                    npmUser,
@@ -190,8 +205,8 @@ func LoadFromEnv() (*Config, error) {
 		DefaultSSLForced:           getEnvBool("DEFAULT_SSL_FORCED", false),
 		DefaultWebsocket:           getEnvBool("DEFAULT_WEBSOCKET", true),
 		DefaultBlockExploits:       getEnvBool("DEFAULT_BLOCK_EXPLOITS", true),
-		AutoCertificate:            getEnvBool("AUTO_CERTIFICATE", getEnvBool("AUTO_SSL", true)),
-		AutoSSLForced:              getEnvBool("AUTO_SSL_FORCED", true),
+		AutoDetectSSL:              getEnvBool("AUTO_DETECT_SSL", true),
+		AutoSSLForced:              getEnvBool("AUTO_SSL_FORCED", false),
 		DefaultHealthcheckEnabled:  defaultHealthcheckEnabled,
 		DefaultHealthcheckTimeout:  defaultHealthcheckTimeout,
 		DefaultHealthcheckFallback: defaultHealthcheckFallback,
@@ -215,8 +230,12 @@ func LoadFromEnv() (*Config, error) {
 		LXDAllowedSubnets:          lxdAllowedSubnets,
 		LXDPollInterval:            lxdPollInterval,
 		LabelPrefix:                getEnv("LABEL_PREFIX", "npm."),
+		DashboardEnabled:           dashboardEnabled,
 		Port:                       port,
 		LogLevel:                   strings.ToLower(getEnv("LOG_LEVEL", "info")),
+		MainNodeURL:                mainNodeURL,
+		ClusterToken:               clusterToken,
+		PushInterval:               pushInterval,
 	}
 
 	// Basic validation

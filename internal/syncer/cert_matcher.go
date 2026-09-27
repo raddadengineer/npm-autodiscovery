@@ -2,103 +2,110 @@ package syncer
 
 import (
 	"strings"
+	"time"
 
 	"github.com/raddadengineer/npm-autodiscovery/internal/npm"
 )
 
-// MatchDomain evaluates how well a certificate domain pattern matches a target host domain.
-// Returns a match score:
-//   100: Exact match (e.g. "vw.halnt.dev" == "vw.halnt.dev")
-//    80: Direct single-level wildcard match (e.g. "*.halnt.dev" matches "vw.halnt.dev")
-//    40: Multi-level wildcard match (e.g. "*.halnt.dev" matches "sub.vw.halnt.dev")
-//     0: No match (e.g. "*.halnt.dev" vs "worker.local")
-func MatchDomain(pattern, host string) int {
-	pattern = strings.ToLower(strings.TrimSpace(pattern))
-	host = strings.ToLower(strings.TrimSpace(host))
-
-	// Clean any port suffix or trailing dots
-	if idx := strings.Index(host, ":"); idx != -1 {
-		host = host[:idx]
-	}
-	host = strings.TrimSuffix(host, ".")
-	pattern = strings.TrimSuffix(pattern, ".")
-
-	if pattern == "" || host == "" {
-		return 0
-	}
-
-	// 1. Exact match has highest precedence
-	if pattern == host {
-		return 100
-	}
-
-	// 2. Wildcard pattern handling: "*.domain.tld"
-	if strings.HasPrefix(pattern, "*.") {
-		baseDomain := pattern[2:] // e.g. "halnt.dev"
-
-		// Wildcard does not match the apex domain directly (e.g. "*.halnt.dev" does not match "halnt.dev")
-		if host == baseDomain {
-			return 0
-		}
-
-		suffix := "." + baseDomain
-		if strings.HasSuffix(host, suffix) {
-			prefix := strings.TrimSuffix(host, suffix)
-			if len(prefix) > 0 {
-				// Single-level wildcard match (no further dots in the prefix): score 80
-				if !strings.Contains(prefix, ".") {
-					return 80
-				}
-				// Multi-level wildcard match (fallback): score 40
-				return 40
-			}
-		}
-	}
-
-	return 0
-}
-
-// FindBestMatchingCertificate returns the certificate in certs with the highest match score for domain.
-func FindBestMatchingCertificate(certs []npm.Certificate, domain string) *npm.Certificate {
-	var bestCert *npm.Certificate
-	bestScore := 0
-
-	for i := range certs {
-		cert := &certs[i]
-		for _, certDomain := range cert.DomainNames {
-			score := MatchDomain(certDomain, domain)
-			if score > bestScore {
-				bestScore = score
-				bestCert = cert
-			}
-		}
-	}
-
-	if bestScore > 0 {
-		return bestCert
-	}
-	return nil
-}
-
-// FindBestMatchingCertificateForDomains returns the best matching certificate across a list of domains.
-// The primary domain (domains[0]) is prioritized.
-func FindBestMatchingCertificateForDomains(certs []npm.Certificate, domains []string) *npm.Certificate {
-	if len(domains) == 0 || len(certs) == 0 {
+// MatchCertificate evaluates a list of NPM certificates and finds the best match for the given domain names.
+// It returns nil if no certificate matches any of the domains.
+func MatchCertificate(certs []npm.Certificate, domains []string) *npm.Certificate {
+	if len(certs) == 0 || len(domains) == 0 {
 		return nil
 	}
 
-	// First attempt matching the primary domain
-	primaryCert := FindBestMatchingCertificate(certs, domains[0])
-	if primaryCert != nil {
-		return primaryCert
-	}
+	var bestCert *npm.Certificate
+	bestScore := 0
+	var bestExpiry time.Time
 
-	// Fallback to checking secondary domains
-	for _, d := range domains[1:] {
-		if cert := FindBestMatchingCertificate(certs, d); cert != nil {
-			return cert
+	for i := range certs {
+		cert := &certs[i]
+		score := ScoreCertificateForDomains(cert, domains)
+		if score == 0 {
+			continue
+		}
+
+		expiry, _ := time.Parse("2006-01-02 15:04:05", cert.ExpiresOn)
+		if expiry.IsZero() {
+			expiry, _ = time.Parse(time.RFC3339, cert.ExpiresOn)
+		}
+
+		if score > bestScore {
+			bestScore = score
+			bestCert = cert
+			bestExpiry = expiry
+		} else if score == bestScore {
+			// If score is tied, prefer certificate with later expiration or higher ID
+			if expiry.After(bestExpiry) || (expiry.Equal(bestExpiry) && cert.ID > bestCert.ID) {
+				bestCert = cert
+				bestExpiry = expiry
+			}
 		}
 	}
 
-	return nil
+	return bestCert
+}
+
+// ScoreCertificateForDomains calculates how well a certificate covers the provided target domain names.
+// Exact match on a domain: 100 points
+// Wildcard match (*.domain.tld): 50 points
+// Multi-level wildcard match (fallback): 25 points
+// Returns 0 if none of the domains match.
+func ScoreCertificateForDomains(cert *npm.Certificate, domains []string) int {
+	totalScore := 0
+	matchedAny := false
+
+	for _, domain := range domains {
+		d := strings.ToLower(strings.TrimSpace(domain))
+		if d == "" {
+			continue
+		}
+
+		domainScore := 0
+		for _, certDomain := range cert.DomainNames {
+			cd := strings.ToLower(strings.TrimSpace(certDomain))
+			if cd == "" {
+				continue
+			}
+
+			// 1. Exact match (e.g. "vw.halnt.dev" == "vw.halnt.dev")
+			if cd == d {
+				if domainScore < 100 {
+					domainScore = 100
+				}
+				continue
+			}
+
+			// 2. Wildcard match (e.g. "*.halnt.dev" matching "vw.halnt.dev")
+			if strings.HasPrefix(cd, "*.") {
+				baseSuffix := cd[1:] // e.g. ".halnt.dev"
+				if strings.HasSuffix(d, baseSuffix) {
+					sub := d[:len(d)-len(baseSuffix)]
+					if len(sub) > 0 {
+						if !strings.Contains(sub, ".") {
+							// Single-level standard wildcard match (e.g. "vw.halnt.dev")
+							if domainScore < 50 {
+								domainScore = 50
+							}
+						} else {
+							// Multi-level match (e.g. "sub.vw.halnt.dev")
+							if domainScore < 25 {
+								domainScore = 25
+							}
+						}
+					}
+				}
+			}
+		}
+
+		if domainScore > 0 {
+			matchedAny = true
+			totalScore += domainScore
+		}
+	}
+
+	if !matchedAny {
+		return 0
+	}
+	return totalScore
 }

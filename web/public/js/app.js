@@ -3,6 +3,11 @@ let activeTab = 'proxies-view';
 let proxiesData = [];
 let streamsData = [];
 let containersData = [];
+let clusterData = [];
+let selectedContainersNode = 'all';
+let selectedProxiesNode = 'all';
+let selectedStreamsNode = 'all';
+let selectedEventsNode = 'all';
 let currentLogFilter = 'all';
 let autoScrollLogs = true;
 
@@ -20,6 +25,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setInterval(fetchProxies, 6000);
   setInterval(fetchStreams, 6000);
   setInterval(fetchContainers, 10000);
+  setInterval(fetchClusterNodes, 8000);
 });
 
 // Tab navigation handler
@@ -45,6 +51,8 @@ function switchTab(tabId) {
     fetchContainers();
   } else if (tabId === 'streams-view') {
     fetchStreams();
+  } else if (tabId === 'cluster-view') {
+    fetchClusterNodes();
   }
 }
 
@@ -69,6 +77,58 @@ function initSearchAndFilters() {
     containersSearch.addEventListener('input', (e) => {
       renderContainersTable(e.target.value.toLowerCase());
     });
+  }
+
+  const clusterSearch = document.getElementById('cluster-search');
+  if (clusterSearch) {
+    clusterSearch.addEventListener('input', (e) => {
+      renderClusterNodes(e.target.value.toLowerCase());
+    });
+  }
+
+  const containersNodeFilter = document.getElementById('containers-node-filter');
+  if (containersNodeFilter) {
+    containersNodeFilter.addEventListener('change', (e) => {
+      selectedContainersNode = e.target.value;
+      renderContainersTable();
+    });
+  }
+
+  const proxiesNodeFilter = document.getElementById('proxies-node-filter');
+  if (proxiesNodeFilter) {
+    proxiesNodeFilter.addEventListener('change', (e) => {
+      selectedProxiesNode = e.target.value;
+      renderProxiesTable();
+    });
+  }
+
+  const streamsNodeFilter = document.getElementById('streams-node-filter');
+  if (streamsNodeFilter) {
+    streamsNodeFilter.addEventListener('change', (e) => {
+      selectedStreamsNode = e.target.value;
+      renderStreamsTable();
+    });
+  }
+
+  const eventsNodeFilter = document.getElementById('events-node-filter');
+  if (eventsNodeFilter) {
+    eventsNodeFilter.addEventListener('change', (e) => {
+      selectedEventsNode = e.target.value;
+      filterTerminalLogs();
+    });
+  }
+
+  const refreshClusterBtn = document.getElementById('refresh-cluster-btn');
+  if (refreshClusterBtn) {
+    refreshClusterBtn.addEventListener('click', () => {
+      fetchClusterNodes();
+      showToast('Cluster node telemetry refreshed', 'info');
+    });
+  }
+
+  const clusterPill = document.getElementById('cluster-status-pill');
+  if (clusterPill) {
+    clusterPill.addEventListener('click', () => switchTab('cluster-view'));
   }
 
   document.querySelectorAll('.filter-btn').forEach(btn => {
@@ -134,6 +194,7 @@ async function loadInitialData() {
   await fetchProxies();
   await fetchStreams();
   await fetchContainers();
+  await fetchClusterNodes();
 }
 
 // Fetch System Status & Metrics
@@ -147,6 +208,22 @@ async function fetchStatus() {
     const nodeText = document.getElementById('node-id-text');
     if (nodeText && status.host_id) {
       nodeText.textContent = status.host_id;
+    }
+
+    // Cluster Status Pill
+    const clusterText = document.getElementById('cluster-status-text');
+    if (clusterText) {
+      const total = status.cluster_nodes_count || 1;
+      const online = status.cluster_online_nodes || 1;
+      if (total > 1) {
+        clusterText.textContent = `${online}/${total} Online`;
+      } else {
+        clusterText.textContent = `1 Node`;
+      }
+    }
+    const tabClusterCount = document.getElementById('tab-cluster-count');
+    if (tabClusterCount) {
+      tabClusterCount.textContent = status.cluster_nodes_count || 1;
     }
 
     // Docker Status Pill
@@ -294,8 +371,11 @@ function renderStreamsTable(filterText = '') {
   tbody.innerHTML = '';
 
   const filtered = streamsData.filter(s => {
+    if (selectedStreamsNode !== 'all' && s.host_id && s.host_id.toLowerCase() !== selectedStreamsNode.toLowerCase()) {
+      return false;
+    }
     if (!filterText) return true;
-    const searchStr = `${s.incoming_port} ${s.forwarding_host}:${s.forwarding_port} ${s.container_name || ''} ${s.tcp ? 'tcp' : ''} ${s.udp ? 'udp' : ''}`.toLowerCase();
+    const searchStr = `${s.incoming_port} ${s.forwarding_host}:${s.forwarding_port} ${s.container_name || ''} ${s.host_id || ''} ${s.tcp ? 'tcp' : ''} ${s.udp ? 'udp' : ''}`.toLowerCase();
     return searchStr.includes(filterText);
   });
 
@@ -359,8 +439,11 @@ function renderProxiesTable(filterText = '') {
   tbody.innerHTML = '';
 
   const filtered = proxiesData.filter(p => {
+    if (selectedProxiesNode !== 'all' && p.host_id && p.host_id.toLowerCase() !== selectedProxiesNode.toLowerCase()) {
+      return false;
+    }
     if (!filterText) return true;
-    const searchStr = `${p.domain_names.join(' ')} ${p.container_name} ${p.forward_host}:${p.forward_port}`.toLowerCase();
+    const searchStr = `${p.domain_names.join(' ')} ${p.container_name} ${p.forward_host}:${p.forward_port} ${p.host_id || ''}`.toLowerCase();
     return searchStr.includes(filterText);
   });
 
@@ -474,8 +557,11 @@ function renderContainersTable(filterText = '') {
   tbody.innerHTML = '';
 
   const filtered = containersData.filter(c => {
+    if (selectedContainersNode !== 'all' && c.node_id && c.node_id.toLowerCase() !== selectedContainersNode.toLowerCase()) {
+      return false;
+    }
     if (!filterText) return true;
-    const search = `${c.name} ${c.image} ${c.id}`.toLowerCase();
+    const search = `${c.name} ${c.image} ${c.id} ${c.node_id || ''}`.toLowerCase();
     return search.includes(filterText);
   });
 
@@ -520,6 +606,9 @@ function renderContainersTable(filterText = '') {
           <span class="container-sub">${escapeHtml(c.id)}</span>
         </div>
       </td>
+      <td>
+        <span class="badge badge-node">🖥️ ${escapeHtml(c.node_id || 'controller')}</span>
+      </td>
       <td><span style="font-family: var(--font-mono); font-size: 0.8rem;">${escapeHtml(c.image)}</span></td>
       <td>
         <span class="badge ${c.state === 'running' ? 'badge-cyan' : 'badge-gray'}">${escapeHtml(c.state)}</span>
@@ -563,13 +652,16 @@ function appendTerminalLine(log) {
   line.className = 'terminal-line';
   line.setAttribute('data-category', log.category || 'system');
   line.setAttribute('data-level', log.level || 'info');
+  line.setAttribute('data-node', log.node_id || 'controller');
 
   const timeStr = new Date(log.timestamp).toLocaleTimeString();
   const categoryClass = `tag-${log.category || 'system'}`;
   const levelClass = `lvl-${log.level || 'info'}`;
+  const nodeBadge = log.node_id ? `<span class="terminal-node-badge">[${escapeHtml(log.node_id)}]</span>` : '';
 
   line.innerHTML = `
     <span class="terminal-time">[${timeStr}]</span>
+    ${nodeBadge}
     <span class="terminal-tag ${categoryClass}">${escapeHtml(log.category || 'sys')}</span>
     <span class="terminal-level ${levelClass}">${escapeHtml(log.level || 'info').toUpperCase()}</span>
     <span class="terminal-msg">${escapeHtml(log.message)}</span>
@@ -577,7 +669,7 @@ function appendTerminalLine(log) {
   `;
 
   // Apply current filter visibility
-  if (!shouldShowLog(log.category, log.level)) {
+  if (!shouldShowLog(log.category, log.level, log.node_id)) {
     line.style.display = 'none';
   }
 
@@ -598,11 +690,15 @@ function filterTerminalLogs() {
   lines.forEach(line => {
     const cat = line.getAttribute('data-category');
     const lvl = line.getAttribute('data-level');
-    line.style.display = shouldShowLog(cat, lvl) ? 'flex' : 'none';
+    const node = line.getAttribute('data-node');
+    line.style.display = shouldShowLog(cat, lvl, node) ? 'flex' : 'none';
   });
 }
 
-function shouldShowLog(cat, lvl) {
+function shouldShowLog(cat, lvl, node) {
+  if (selectedEventsNode !== 'all' && node && node.toLowerCase() !== selectedEventsNode.toLowerCase()) {
+    return false;
+  }
   if (currentLogFilter === 'all') return true;
   if (currentLogFilter === 'error') return lvl === 'error' || lvl === 'warn';
   return cat === currentLogFilter;
@@ -883,3 +979,164 @@ function copyDocsGuideCode(paneId, toastMsg) {
   navigator.clipboard.writeText(codeEl.textContent.trim());
   showToast(toastMsg || 'Configuration snippet copied to clipboard!', 'success');
 }
+
+// Fetch Cluster Nodes (Multi-Node Control Plane)
+async function fetchClusterNodes() {
+  try {
+    const res = await fetch('/api/cluster/nodes');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    clusterData = data.nodes || [];
+
+    const tabCount = document.getElementById('tab-cluster-count');
+    if (tabCount) {
+      tabCount.textContent = data.count || clusterData.length;
+    }
+
+    updateNodeFilterDropdowns();
+    renderClusterNodes();
+  } catch (err) {
+    console.warn('Failed to fetch cluster nodes:', err);
+  }
+}
+
+function updateNodeFilterDropdowns() {
+  const nodes = [...new Set(clusterData.map(n => n.node_id))];
+  const dropdowns = [
+    { el: document.getElementById('containers-node-filter'), current: selectedContainersNode },
+    { el: document.getElementById('proxies-node-filter'), current: selectedProxiesNode },
+    { el: document.getElementById('streams-node-filter'), current: selectedStreamsNode },
+    { el: document.getElementById('events-node-filter'), current: selectedEventsNode }
+  ];
+
+  dropdowns.forEach(({ el, current }) => {
+    if (!el) return;
+    const existingVal = el.value || current || 'all';
+    el.innerHTML = '<option value="all">🌐 All Nodes</option>';
+    nodes.forEach(nodeId => {
+      const opt = document.createElement('option');
+      opt.value = nodeId;
+      opt.textContent = `🖥️ ${nodeId}`;
+      if (nodeId === existingVal) opt.selected = true;
+      el.appendChild(opt);
+    });
+  });
+}
+
+function renderClusterNodes(filterText = '') {
+  const grid = document.getElementById('cluster-nodes-grid');
+  const emptyState = document.getElementById('cluster-empty');
+  if (!grid) return;
+
+  grid.innerHTML = '';
+
+  const filtered = clusterData.filter(n => {
+    if (!filterText) return true;
+    const search = `${n.node_id} ${n.node_ip} ${n.docker_version || ''} ${n.status}`.toLowerCase();
+    return search.includes(filterText);
+  });
+
+  if (filtered.length === 0) {
+    if (emptyState) emptyState.style.display = 'block';
+    return;
+  }
+  if (emptyState) emptyState.style.display = 'none';
+
+  filtered.forEach(node => {
+    const card = document.createElement('div');
+    card.className = 'node-card glass-panel';
+
+    const isOnline = node.status === 'online';
+    const statusDot = isOnline 
+      ? '<span class="status-dot ping-dot connected"></span>' 
+      : '<span class="status-dot ping-dot disconnected"></span>';
+    const statusText = isOnline 
+      ? '<span class="badge badge-emerald">Online</span>' 
+      : '<span class="badge badge-rose">Offline</span>';
+
+    const roleBadge = node.is_controller 
+      ? '<span class="badge badge-cyan" style="font-size:0.72rem;">👑 Central Controller</span>' 
+      : '<span class="badge badge-violet" style="font-size:0.72rem;">📡 Remote Worker</span>';
+
+    const lastHeartbeatTime = node.last_heartbeat 
+      ? formatTimeAgo(new Date(node.last_heartbeat)) 
+      : 'Just now';
+
+    const uptimeStr = formatUptime(node.uptime_seconds || 0);
+
+    card.innerHTML = `
+      <div class="node-card-header">
+        <div class="node-card-title-group">
+          ${statusDot}
+          <span class="node-card-title">${escapeHtml(node.node_id)}</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:0.5rem;">
+          ${roleBadge}
+          ${statusText}
+        </div>
+      </div>
+
+      <div class="node-meta-grid">
+        <div class="node-meta-item">
+          <span class="node-meta-label">Reachable IP / Host</span>
+          <span class="node-meta-val"><code>${escapeHtml(node.node_ip || '127.0.0.1')}</code></span>
+        </div>
+        <div class="node-meta-item">
+          <span class="node-meta-label">Last Heartbeat</span>
+          <span class="node-meta-val">${escapeHtml(lastHeartbeatTime)}</span>
+        </div>
+        <div class="node-meta-item">
+          <span class="node-meta-label">Discovered Containers</span>
+          <span class="node-meta-val" style="color:var(--accent-cyan); font-weight:700;">${node.container_count || 0}</span>
+        </div>
+        <div class="node-meta-item">
+          <span class="node-meta-label">Provisioned Proxies</span>
+          <span class="node-meta-val" style="color:var(--accent-emerald); font-weight:700;">${node.proxy_count || 0}</span>
+        </div>
+      </div>
+
+      <div class="node-engines-list">
+        <div class="node-engine-row">
+          <span class="text-muted">🐳 Docker Engine:</span>
+          <span>${node.docker_connected ? `<span style="color:#10b981; font-weight:600;">Connected</span> <span style="font-size:0.75rem; color:var(--text-muted); font-family:var(--font-mono);">(${escapeHtml(node.docker_version || 'active')})</span>` : '<span style="color:#f43f5e;">Disconnected</span>'}</span>
+        </div>
+        <div class="node-engine-row">
+          <span class="text-muted">⚡ Proxmox VE:</span>
+          <span>${node.pve_connected ? '<span style="color:#10b981; font-weight:600;">Active</span>' : '<span style="color:var(--text-muted);">Disabled</span>'}</span>
+        </div>
+        <div class="node-engine-row">
+          <span class="text-muted">🐧 LXD / Incus:</span>
+          <span>${node.lxd_connected ? '<span style="color:#10b981; font-weight:600;">Active</span>' : '<span style="color:var(--text-muted);">Disabled</span>'}</span>
+        </div>
+      </div>
+
+      <div class="node-card-footer">
+        <span style="font-size:0.75rem; color:var(--text-muted);">Uptime: ${escapeHtml(uptimeStr)}</span>
+        <button class="btn btn-secondary btn-sm" onclick="filterContainersByNode('${escapeHtml(node.node_id)}')">
+          Inspect Containers
+        </button>
+      </div>
+    `;
+
+    grid.appendChild(card);
+  });
+}
+
+function filterContainersByNode(nodeId) {
+  selectedContainersNode = nodeId;
+  const select = document.getElementById('containers-node-filter');
+  if (select) select.value = nodeId;
+  switchTab('containers-view');
+  renderContainersTable();
+}
+
+function formatTimeAgo(date) {
+  const seconds = Math.floor((new Date() - date) / 1000);
+  if (seconds < 5) return 'Just now';
+  if (seconds < 60) return `${seconds}s ago`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours}h ago`;
+}
+

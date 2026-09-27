@@ -82,7 +82,7 @@ Add these labels to any Docker container (via `docker-compose.yml` or `docker ru
 | `npm.forward_host` | string | Auto | Custom target host or IP override. | `192.168.1.50` or `my-service` |
 | `npm.ssl.enabled` | boolean | `false` | Enable SSL for this proxy host. | `true` |
 | `npm.ssl.forced` | boolean | `false` | Force HTTP to HTTPS redirection. | `true` |
-| `npm.certificate_id` | int/str | `auto` | NPM Certificate ID, `"auto"` (matches domain against NPM certs), `"new"`, or `0` (HTTP only). | `auto`, `2`, `0` |
+| `npm.certificate_id` | int/str | Auto | NPM Certificate ID (e.g. `1`), `"new"`, or `"none"` / `0` to disable. If omitted, automatically matches existing NPM certificates by domain (e.g. `*.halnt.dev`, `*.domain.com` vs HTTP-only `.local`). | `2` |
 | `npm.websocket` | boolean | `true` | Enable WebSocket upgrade support (`proxy_set_header Upgrade`). | `true` |
 | `npm.block_exploits` | boolean | `true` | Enable NPM exploit block filters. | `true` |
 | `npm.caching` | boolean | `false` | Enable Nginx static asset caching. | `false` |
@@ -342,7 +342,7 @@ networks:
     driver: bridge
 ```
 
-### Option C: Multi-Host / Remote Worker Node Deployment
+### Option C: Multi-Host / Remote Worker Node Deployment (Headless or Standalone)
 
 To run an agent on a separate machine (Host 2, Host 3, etc.) that discovers local containers and routes traffic back to a central Nginx Proxy Manager instance (Host 1):
 
@@ -351,7 +351,7 @@ To run an agent on a separate machine (Host 2, Host 3, etc.) that discovers loca
 cp .env.worker.example .env
 ```
 
-2. **Configure node identity and cross-host routing in `.env`:**
+2. **Configure node identity, cross-host routing, and headless telemetry push in `.env`:**
 ```dotenv
 # Central NPM instance reachable from this worker
 NPM_URL=http://192.168.1.10:81
@@ -366,6 +366,15 @@ HOST_IP=192.168.1.20
 
 # Route ingress traffic to published host ports on HOST_IP
 USE_HOST_PORT=true
+
+# --- Unified Cluster & Headless Worker Mode ---
+# Disable local dashboard completely (0 open listening ports on the worker node)
+DASHBOARD_ENABLED=false
+
+# Push worker telemetry, containers, proxies, and logs to central controller
+MAIN_NODE_URL=http://192.168.1.10:8080
+CLUSTER_TOKEN=your-cluster-secret-token
+PUSH_INTERVAL=15s
 ```
 
 3. **Deploy using `docker-compose.worker.yml`:**
@@ -374,6 +383,10 @@ docker compose -f docker-compose.worker.yml up -d
 ```
 
 Central NPM will automatically register `worker.local` routing to `http://192.168.1.20:8081` tagged with `[host_id: worker-node-01]`, preventing collision or accidental deletion by other nodes.
+
+When `DASHBOARD_ENABLED=false` is set:
+- **Zero Open Ports:** The HTTP server is not initialized on the worker host; no extra ports need to be exposed or mapped in Docker.
+- **Centralized Visibility:** All discovered containers, active proxies, L4 streams, and live logs from the worker node appear directly on your main node's dashboard under **Cluster Nodes**, complete with host badges and filter controls.
 
 ### Quickstart Guide
 
@@ -389,11 +402,14 @@ The application serves a single-page web app and REST API on `PORT` (`8080`):
 
 ### REST Endpoints
 
-- `GET /api/status`: Returns Docker & NPM connection health, container counts, active proxy counts, and uptime.
-- `GET /api/proxies`: Returns list of all active auto-discovered proxy hosts with target IPs, domains, and SSL status.
-- `GET /api/containers`: Returns all running Docker containers and their discovery readiness.
+- `GET /api/status`: Returns Docker & NPM connection health, container counts, active proxy counts, cluster health summary, and uptime.
+- `GET /api/proxies?node=<node_id>`: Returns list of all active auto-discovered proxy hosts (aggregated across all cluster nodes or filtered by node ID) with target IPs, domains, and SSL status.
+- `GET /api/streams?node=<node_id>`: Returns list of all active TCP/UDP L4 streams across nodes.
+- `GET /api/containers?node=<node_id>`: Returns running Docker containers and their discovery readiness.
+- `GET /api/cluster/nodes`: Returns status, last heartbeat, container/proxy counts, and platform details for all worker nodes in the cluster.
+- `POST /api/cluster/report`: Secure ingestion endpoint for remote worker nodes to push periodic telemetry reports (requires `X-Cluster-Token` or Bearer authentication if configured).
 - `POST /api/sync`: Forces an immediate full container scan and synchronization with NPM.
-- `GET /api/events/stream`: Live Server-Sent Events (SSE) log stream for real-time terminal output.
+- `GET /api/events/stream`: Live Server-Sent Events (SSE) log stream for real-time terminal output across all nodes.
 - `GET /api/events`: Fetches recent log history buffer.
 - `GET /api/config`: Returns active non-sensitive configuration settings.
 

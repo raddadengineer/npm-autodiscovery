@@ -222,27 +222,6 @@ func (c *Client) GetProxyHosts(ctx context.Context) ([]ProxyHost, error) {
 	return hosts, nil
 }
 
-// GetCertificates retrieves all SSL certificates configured in NPM.
-func (c *Client) GetCertificates(ctx context.Context) ([]Certificate, error) {
-	resp, err := c.doRequest(ctx, http.MethodGet, "/api/nginx/certificates", nil)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("failed to fetch certificates (%d): %s", resp.StatusCode, string(body))
-	}
-
-	var certs []Certificate
-	if err := json.NewDecoder(resp.Body).Decode(&certs); err != nil {
-		return nil, fmt.Errorf("failed to decode certificates: %w", err)
-	}
-
-	return certs, nil
-}
-
 // CreateProxyHost creates a new proxy host record in NPM.
 func (c *Client) CreateProxyHost(ctx context.Context, hostReq *ProxyHostRequest) (*ProxyHost, error) {
 	data, err := json.Marshal(hostReq)
@@ -402,6 +381,27 @@ func (c *Client) DeleteStream(ctx context.Context, id int) error {
 	}
 
 	return nil
+}
+
+// GetCertificates retrieves all configured SSL certificates from NPM.
+func (c *Client) GetCertificates(ctx context.Context) ([]Certificate, error) {
+	resp, err := c.doRequest(ctx, http.MethodGet, "/api/nginx/certificates", nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("failed to fetch certificates (%d): %s", resp.StatusCode, string(body))
+	}
+
+	var certs []Certificate
+	if err := json.NewDecoder(resp.Body).Decode(&certs); err != nil {
+		return nil, fmt.Errorf("failed to decode certificates: %w", err)
+	}
+
+	return certs, nil
 }
 
 // Status returns current connection status and health info.
