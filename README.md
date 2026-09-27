@@ -377,6 +377,20 @@ CLUSTER_TOKEN=your-cluster-secret-token
 PUSH_INTERVAL=15s
 ```
 
+> [!TIP]
+> **Generating a Secure `CLUSTER_TOKEN`:**
+> To protect the `/api/cluster/report` ingestion endpoint, generate a cryptographically secure 32-byte secret using one of the following commands:
+> ```bash
+> # Using OpenSSL (Recommended):
+> openssl rand -hex 32
+>
+> # Or using Python:
+> python3 -c "import secrets; print(secrets.token_hex(32))"
+> ```
+> Copy the generated string and set the **identical** token in both:
+> 1. **Main Node's `.env`**: `CLUSTER_TOKEN=<your-token>`
+> 2. **Worker Node's `.env`**: `CLUSTER_TOKEN=<your-token>`
+
 3. **Deploy using `docker-compose.worker.yml`:**
 ```bash
 docker compose -f docker-compose.worker.yml up -d
