@@ -224,11 +224,13 @@ NPM Auto-Discovery provides three host resolution strategies (`FORWARD_HOST_STRA
 If you already have Nginx Proxy Manager running, simply configure your `.env` file and run NPM Auto-Discovery:
 
 1. **Create your `.env` configuration file:**
+
 ```bash
 cp .env.example .env
 ```
 
-2. **Configure your NPM instance connection in `.env`:**
+1. **Configure your NPM instance connection in `.env`:**
+
 ```dotenv
 # Target Nginx Proxy Manager instance
 NPM_URL=http://nginx-proxy-manager:81 # or http://192.168.1.100:81
@@ -239,7 +241,8 @@ FORWARD_HOST_STRATEGY=auto
 POLL_INTERVAL=30s
 ```
 
-3. **Start the agent using Docker Compose:**
+1. **Start the agent using Docker Compose:**
+
 ```bash
 docker compose up -d
 ```
@@ -347,11 +350,13 @@ networks:
 To run an agent on a separate machine (Host 2, Host 3, etc.) that discovers local containers and routes traffic back to a central Nginx Proxy Manager instance (Host 1):
 
 1. **On the worker machine, create your `.env` configuration:**
+
 ```bash
 cp .env.worker.example .env
 ```
 
-2. **Configure node identity, cross-host routing, and headless telemetry push in `.env`:**
+1. **Configure node identity, cross-host routing, and headless telemetry push in `.env`:**
+
 ```dotenv
 # Central NPM instance reachable from this worker
 NPM_URL=http://192.168.1.10:81
@@ -380,6 +385,7 @@ PUSH_INTERVAL=15s
 > [!TIP]
 > **Generating a Secure `CLUSTER_TOKEN`:**
 > To protect the `/api/cluster/report` ingestion endpoint, generate a cryptographically secure 32-byte secret using one of the following commands:
+>
 > ```bash
 > # Using OpenSSL (Recommended):
 > openssl rand -hex 32
@@ -387,11 +393,14 @@ PUSH_INTERVAL=15s
 > # Or using Python:
 > python3 -c "import secrets; print(secrets.token_hex(32))"
 > ```
+>
 > Copy the generated string and set the **identical** token in both:
+>
 > 1. **Main Node's `.env`**: `CLUSTER_TOKEN=<your-token>`
 > 2. **Worker Node's `.env`**: `CLUSTER_TOKEN=<your-token>`
 
-3. **Deploy using `docker-compose.worker.yml`:**
+1. **Deploy using `docker-compose.worker.yml` (or Web UI Generator):**
+
 ```bash
 docker compose -f docker-compose.worker.yml up -d
 ```
@@ -399,8 +408,22 @@ docker compose -f docker-compose.worker.yml up -d
 Central NPM will automatically register `worker.local` routing to `http://192.168.1.20:8081` tagged with `[host_id: worker-node-01]`, preventing collision or accidental deletion by other nodes.
 
 When `DASHBOARD_ENABLED=false` is set:
+
 - **Zero Open Ports:** The HTTP server is not initialized on the worker host; no extra ports need to be exposed or mapped in Docker.
 - **Centralized Visibility:** All discovered containers, active proxies, L4 streams, and live logs from the worker node appear directly on your main node's dashboard under **Cluster Nodes**, complete with host badges and filter controls.
+
+### 🪄 Automated "Add Node" Agent Generator
+
+From the **Cluster Nodes** dashboard tab, click **`+ Add Node`**:
+
+1. Enter your remote worker's **Agent Address** (e.g. `192.168.1.50` or hostname) and optional Node ID.
+2. Click **⚡ Generate Agent Configuration**.
+3. Instantly copy or download:
+   - **One-Liner `docker run` Command** (ready to paste in an SSH terminal)
+   - **`docker-compose.worker.yml`**
+   - **Pre-populated `.env` file** (configured with `MAIN_NODE_URL`, `CLUSTER_TOKEN`, and `HOST_IP`)
+   - **Test `worker-whoami` service**
+4. The dashboard automatically listens for the new agent's first heartbeat at `/api/cluster/report` and turns green upon successful registration!
 
 ### Quickstart Guide
 
@@ -421,6 +444,7 @@ The application serves a single-page web app and REST API on `PORT` (`8080`):
 - `GET /api/streams?node=<node_id>`: Returns list of all active TCP/UDP L4 streams across nodes.
 - `GET /api/containers?node=<node_id>`: Returns running Docker containers and their discovery readiness.
 - `GET /api/cluster/nodes`: Returns status, last heartbeat, container/proxy counts, and platform details for all worker nodes in the cluster.
+- `GET /api/cluster/setup-info`: Provides controller parameters and cluster tokens for automated agent provisioning.
 - `POST /api/cluster/report`: Secure ingestion endpoint for remote worker nodes to push periodic telemetry reports (requires `X-Cluster-Token` or Bearer authentication if configured).
 - `POST /api/sync`: Forces an immediate full container scan and synchronization with NPM.
 - `GET /api/events/stream`: Live Server-Sent Events (SSE) log stream for real-time terminal output across all nodes.

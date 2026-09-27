@@ -143,6 +143,23 @@ func TestClusterReportAndNodesEndpoints(t *testing.T) {
 	if !strings.Contains(body, `"count":2`) {
 		t.Errorf("expected count 2 in response: %s", body)
 	}
+
+	// 4. Test GET /api/cluster/setup-info
+	req = httptest.NewRequest(http.MethodGet, "/api/cluster/setup-info", nil)
+	rr = httptest.NewRecorder()
+	srv.handleClusterSetupInfo(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected HTTP 200 OK from /api/cluster/setup-info, got %d", rr.Code)
+	}
+
+	infoBody := rr.Body.String()
+	if !strings.Contains(infoBody, "super-secret-token") {
+		t.Errorf("expected cluster_token in setup info: %s", infoBody)
+	}
+	if !strings.Contains(infoBody, "http://127.0.0.1:81") {
+		t.Errorf("expected npm_url in setup info: %s", infoBody)
+	}
 }
 
 

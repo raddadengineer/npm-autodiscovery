@@ -500,6 +500,13 @@
                 </svg>
                 <span>Refresh Nodes</span>
               </button>
+              <button class="btn btn-primary btn-sm" id="btn-open-add-node" title="Add a remote worker node and generate configuration">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="12" y1="5" x2="12" y2="19"></line>
+                  <line x1="5" y1="12" x2="19" y2="12"></line>
+                </svg>
+                <span>Add Node</span>
+              </button>
             </div>
           </div>
 
@@ -513,7 +520,16 @@
             <p style="color: var(--text-muted); max-width: 550px; margin: 0 auto 1.5rem auto; line-height: 1.6;">
               Currently running in single-host controller mode. To connect a remote worker agent with its dashboard disabled, configure <code>DASHBOARD_ENABLED=false</code> and <code>MAIN_NODE_URL=http://&lt;this-node-ip&gt;:8080</code> on your worker machine.
             </p>
-            <button class="btn btn-primary" onclick="switchTab('docs-view')">View Worker Setup Guide</button>
+            <div style="display: flex; justify-content: center; gap: 0.75rem; margin-top: 1.25rem;">
+              <button class="btn btn-primary" id="btn-empty-add-node">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: -2px; margin-right: 4px;">
+                  <line x1="12" y1="5" x2="12" y2="19"></line>
+                  <line x1="5" y1="12" x2="19" y2="12"></line>
+                </svg>
+                <span>Add Remote Node</span>
+              </button>
+              <button class="btn btn-secondary" onclick="switchTab('docs-view')">View Worker Setup Guide</button>
+            </div>
           </div>
         </div>
       </section>
@@ -1258,6 +1274,160 @@ PUSH_INTERVAL=15s</code></pre>
       </div>
       <div class="modal-body" id="modal-content">
         <!-- Content inserted dynamically -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Add Cluster Node & Generator -->
+  <div class="modal-overlay" id="add-node-modal" style="display: none;">
+    <div class="modal-card modal-card-lg glass-panel">
+      <div class="modal-header">
+        <div style="display: flex; align-items: center; gap: 0.65rem;">
+          <span style="font-size: 1.35rem;">🖥️</span>
+          <div>
+            <h3 style="margin: 0; line-height: 1.2;">Add Remote Worker Node</h3>
+            <p style="margin: 0; font-size: 0.78rem; color: var(--text-muted); font-weight: normal;">Generate ready-to-deploy agent configuration for remote Docker hosts</p>
+          </div>
+        </div>
+        <button class="modal-close" onclick="closeAddNodeModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label" for="node-agent-address">
+              <span>Agent Address (Worker Host IP or Domain) <span style="color: var(--accent-rose);">*</span></span>
+            </label>
+            <input type="text" id="node-agent-address" class="form-input" placeholder="e.g. 192.168.1.50 or worker.homelab.local" />
+            <span class="form-hint">The reachable IP or DNS hostname where this worker runs and serves container ports.</span>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="node-agent-id">
+              <span>Node Name / Host ID</span>
+            </label>
+            <div class="input-with-button">
+              <input type="text" id="node-agent-id" class="form-input" placeholder="e.g. worker-node-02" />
+              <button type="button" class="btn btn-secondary btn-sm" id="btn-random-node-id" title="Generate random node name">🎲 Random</button>
+            </div>
+            <span class="form-hint">Unique identifier in the cluster to prevent multi-host routing collisions.</span>
+          </div>
+        </div>
+
+        <details class="config-accordion" id="advanced-node-settings">
+          <summary>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="3"></circle>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+            </svg>
+            <span>Advanced Cluster & Proxy Settings</span>
+          </summary>
+          <div style="padding-top: 0.85rem; display: flex; flex-direction: column; gap: 0.75rem;">
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label" for="node-main-url">Controller URL (Main Node)</label>
+                <input type="text" id="node-main-url" class="form-input" placeholder="http://192.168.1.10:8080" />
+                <span class="form-hint">Address where the worker pushes telemetry reports via /api/cluster/report.</span>
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="node-npm-url">Central NPM URL</label>
+                <input type="text" id="node-npm-url" class="form-input" placeholder="http://192.168.1.10:81" />
+                <span class="form-hint">Central Nginx Proxy Manager admin API endpoint.</span>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label" for="node-cluster-token">
+                  <span>Cluster Secret Token</span>
+                </label>
+                <div class="input-with-button">
+                  <input type="text" id="node-cluster-token" class="form-input" placeholder="Cluster secret token..." />
+                  <button type="button" class="btn btn-secondary btn-sm" id="btn-generate-cluster-token" title="Generate 32-byte secret">🔑 New</button>
+                </div>
+                <span class="form-hint">Shared authentication secret matching the controller node's CLUSTER_TOKEN.</span>
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="node-npm-pass">Central NPM Password</label>
+                <input type="password" id="node-npm-pass" class="form-input" placeholder="changeme" />
+                <span class="form-hint">NPM admin password (can be updated later in .env).</span>
+              </div>
+            </div>
+
+            <div style="display: flex; flex-wrap: wrap; gap: 1.25rem; padding-top: 0.35rem;">
+              <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.82rem; cursor: pointer;">
+                <input type="checkbox" id="node-headless-mode" checked />
+                <span>Headless Worker Mode (<code>DASHBOARD_ENABLED=false</code>)</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.82rem; cursor: pointer;">
+                <input type="checkbox" id="node-use-host-port" checked />
+                <span>Cross-Host Routing (<code>USE_HOST_PORT=true</code>)</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.82rem; cursor: pointer;">
+                <input type="checkbox" id="node-auto-ssl" checked />
+                <span>Auto-Detect SSL (<code>AUTO_DETECT_SSL=true</code>)</span>
+              </label>
+            </div>
+          </div>
+        </details>
+
+        <button class="btn btn-primary" id="btn-generate-agent-config" style="width: 100%; justify-content: center; padding: 0.75rem 1rem; font-weight: 700; font-size: 0.95rem; margin-bottom: 1.25rem;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+          </svg>
+          <span>Generate Agent Configuration</span>
+        </button>
+
+        <!-- Generated Configuration Output Area -->
+        <div id="agent-config-output" style="display: none;">
+          <div class="config-tabs">
+            <button class="config-tab-btn active" data-cfg-tab="run">🚀 Docker Run (One-Liner)</button>
+            <button class="config-tab-btn" data-cfg-tab="compose">📦 docker-compose.worker.yml</button>
+            <button class="config-tab-btn" data-cfg-tab="env">⚙️ .env Configuration</button>
+            <button class="config-tab-btn" data-cfg-tab="whoami">🧪 Test Service (whoami)</button>
+          </div>
+
+          <div class="config-code-box">
+            <div class="config-code-header">
+              <span id="config-code-filename">docker run command</span>
+              <div style="display: flex; gap: 0.5rem;">
+                <button class="btn btn-secondary btn-sm" id="btn-copy-agent-config" style="padding: 0.25rem 0.65rem; font-size: 0.75rem;">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                  </svg>
+                  <span id="btn-copy-agent-config-text">Copy</span>
+                </button>
+                <button class="btn btn-secondary btn-sm" id="btn-download-agent-config" style="padding: 0.25rem 0.65rem; font-size: 0.75rem;">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="7 10 12 15 17 10"></polyline>
+                    <line x1="12" y1="15" x2="12" y2="3"></line>
+                  </svg>
+                  <span>Download</span>
+                </button>
+              </div>
+            </div>
+            <pre class="config-code-pre"><code id="config-code-content"></code></pre>
+          </div>
+
+          <!-- Real-Time Heartbeat Connection Monitor -->
+          <div class="live-watcher-card" id="node-live-watcher">
+            <div class="live-watcher-status">
+              <span class="status-dot ping-dot waiting" id="watcher-status-dot"></span>
+              <div>
+                <div style="font-weight: 600; font-size: 0.85rem;" id="watcher-title">Waiting for Remote Agent Heartbeat...</div>
+                <div style="font-size: 0.75rem; color: var(--text-muted);" id="watcher-subtitle">
+                  Run the command on your worker node (<span id="watcher-target-ip">192.168.1.50</span>). Heartbeat will register automatically.
+                </div>
+              </div>
+            </div>
+            <button class="btn btn-primary btn-sm" id="btn-view-connected-node" style="display: none;">
+              View in Cluster Grid
+            </button>
+          </div>
+        </div>
+
       </div>
     </div>
   </div>

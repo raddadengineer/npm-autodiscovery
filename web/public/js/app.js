@@ -18,6 +18,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initEventStream();
   initDocsSubtabs();
   initDocsSearch();
+  initAddNodeGenerator();
   loadInitialData();
 
   // Periodic polling for status and tables every 5 seconds as fallback
@@ -995,6 +996,7 @@ async function fetchClusterNodes() {
 
     updateNodeFilterDropdowns();
     renderClusterNodes();
+    checkPendingNodeConnection();
   } catch (err) {
     console.warn('Failed to fetch cluster nodes:', err);
   }
@@ -1045,6 +1047,7 @@ function renderClusterNodes(filterText = '') {
   filtered.forEach(node => {
     const card = document.createElement('div');
     card.className = 'node-card glass-panel';
+    card.setAttribute('data-node-id', node.node_id);
 
     const isOnline = node.status === 'online';
     const statusDot = isOnline 
@@ -1139,4 +1142,451 @@ function formatTimeAgo(date) {
   const hours = Math.floor(minutes / 60);
   return `${hours}h ago`;
 }
+
+// ==============================================================================
+// Remote Worker Node Provisioning & Configuration Generator
+// ==============================================================================
+let clusterSetupInfo = null;
+let activeConfigTab = 'run';
+let pendingProvisionNode = null;
+let generatedConfigs = {};
+
+function initAddNodeGenerator() {
+  const btnOpen = document.getElementById('btn-open-add-node');
+  if (btnOpen) btnOpen.addEventListener('click', openAddNodeModal);
+
+  const btnEmpty = document.getElementById('btn-empty-add-node');
+  if (btnEmpty) btnEmpty.addEventListener('click', openAddNodeModal);
+
+  const btnRandom = document.getElementById('btn-random-node-id');
+  if (btnRandom) {
+    btnRandom.addEventListener('click', () => {
+      const idInput = document.getElementById('node-agent-id');
+      if (idInput) {
+        idInput.value = generateRandomNodeName();
+        if (generatedConfigs.run) generateAgentConfig(false);
+      }
+    });
+  }
+
+  const btnToken = document.getElementById('btn-generate-cluster-token');
+  if (btnToken) {
+    btnToken.addEventListener('click', () => {
+      const tokenInput = document.getElementById('node-cluster-token');
+      if (tokenInput) {
+        tokenInput.value = generateSecureClusterToken();
+        if (generatedConfigs.run) generateAgentConfig(false);
+        showToast('Generated fresh 32-byte cluster secret token', 'info');
+      }
+    });
+  }
+
+  const btnGenerate = document.getElementById('btn-generate-agent-config');
+  if (btnGenerate) {
+    btnGenerate.addEventListener('click', () => generateAgentConfig(true));
+  }
+
+  const addrInput = document.getElementById('node-agent-address');
+  if (addrInput) {
+    addrInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        generateAgentConfig(true);
+      }
+    });
+    addrInput.addEventListener('input', () => {
+      if (generatedConfigs.run) generateAgentConfig(false);
+    });
+  }
+
+  // Config tab switcher
+  document.querySelectorAll('.config-tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tabKey = btn.getAttribute('data-cfg-tab');
+      if (tabKey) switchConfigTab(tabKey);
+    });
+  });
+
+  const btnCopy = document.getElementById('btn-copy-agent-config');
+  if (btnCopy) btnCopy.addEventListener('click', copyCurrentAgentConfig);
+
+  const btnDownload = document.getElementById('btn-download-agent-config');
+  if (btnDownload) btnDownload.addEventListener('click', downloadCurrentAgentConfig);
+
+  const addNodeModal = document.getElementById('add-node-modal');
+  if (addNodeModal) {
+    addNodeModal.addEventListener('click', (e) => {
+      if (e.target === addNodeModal) closeAddNodeModal();
+    });
+  }
+
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      closeModal();
+      closeAddNodeModal();
+    }
+  });
+}
+
+async function openAddNodeModal() {
+  const modal = document.getElementById('add-node-modal');
+  if (!modal) return;
+  modal.style.display = 'flex';
+
+  const idInput = document.getElementById('node-agent-id');
+  if (idInput && !idInput.value) {
+    idInput.value = generateRandomNodeName();
+  }
+
+  const addrInput = document.getElementById('node-agent-address');
+  if (addrInput) {
+    setTimeout(() => addrInput.focus(), 50);
+  }
+
+  try {
+    const res = await fetch('/api/cluster/setup-info');
+    if (res.ok) {
+      clusterSetupInfo = await res.json();
+      
+      const mainUrlInput = document.getElementById('node-main-url');
+      if (mainUrlInput && !mainUrlInput.value) {
+        mainUrlInput.value = clusterSetupInfo.main_node_url || window.location.origin;
+      }
+      
+      const npmUrlInput = document.getElementById('node-npm-url');
+      if (npmUrlInput && !npmUrlInput.value) {
+        npmUrlInput.value = clusterSetupInfo.npm_url || 'http://127.0.0.1:81';
+      }
+
+      const tokenInput = document.getElementById('node-cluster-token');
+      if (tokenInput && !tokenInput.value) {
+        tokenInput.value = clusterSetupInfo.cluster_token || generateSecureClusterToken();
+      }
+    }
+  } catch (err) {
+    console.warn('Could not fetch cluster setup info, using fallback defaults:', err);
+    const mainUrlInput = document.getElementById('node-main-url');
+    if (mainUrlInput && !mainUrlInput.value) {
+      mainUrlInput.value = window.location.origin;
+    }
+    const tokenInput = document.getElementById('node-cluster-token');
+    if (tokenInput && !tokenInput.value) {
+      tokenInput.value = generateSecureClusterToken();
+    }
+  }
+
+  if (addrInput && addrInput.value.trim()) {
+    generateAgentConfig(false);
+  }
+}
+
+function closeAddNodeModal() {
+  const modal = document.getElementById('add-node-modal');
+  if (modal) modal.style.display = 'none';
+}
+
+function generateRandomNodeName() {
+  const prefixes = ['worker', 'edge', 'node', 'lab', 'host', 'compute'];
+  const suffixes = ['alpha', 'beta', 'delta', 'east', 'west', '01', '02', '03', 'prime', 'hub'];
+  const p = prefixes[Math.floor(Math.random() * prefixes.length)];
+  const s = suffixes[Math.floor(Math.random() * suffixes.length)];
+  return `${p}-${s}`;
+}
+
+function generateSecureClusterToken() {
+  const arr = new Uint8Array(32);
+  window.crypto.getRandomValues(arr);
+  return Array.from(arr, b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function generateAgentConfig(notify = true) {
+  const addrInput = document.getElementById('node-agent-address');
+  let agentAddress = (addrInput?.value || '').trim();
+
+  // Strip protocol or trailing slashes if user pasted a URL
+  agentAddress = agentAddress.replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+
+  if (!agentAddress) {
+    if (notify) {
+      showToast('Please enter the Agent Address (Host IP or Domain)', 'error');
+      if (addrInput) addrInput.focus();
+    }
+    return;
+  }
+
+  const idInput = document.getElementById('node-agent-id');
+  let nodeId = (idInput?.value || '').trim();
+  if (!nodeId) {
+    nodeId = generateRandomNodeName();
+    if (idInput) idInput.value = nodeId;
+  }
+
+  const mainNodeUrl = (document.getElementById('node-main-url')?.value || window.location.origin).trim().replace(/\/+$/, '');
+  const npmUrl = (document.getElementById('node-npm-url')?.value || 'http://127.0.0.1:81').trim().replace(/\/+$/, '');
+  const clusterToken = (document.getElementById('node-cluster-token')?.value || '').trim();
+  const npmPass = (document.getElementById('node-npm-pass')?.value || 'changeme').trim();
+  const headlessMode = document.getElementById('node-headless-mode')?.checked ?? true;
+  const useHostPort = document.getElementById('node-use-host-port')?.checked ?? true;
+  const autoSSL = document.getElementById('node-auto-ssl')?.checked ?? true;
+  const npmUser = (clusterSetupInfo?.npm_user || 'admin@example.com');
+
+  pendingProvisionNode = {
+    id: nodeId,
+    address: agentAddress
+  };
+
+  const targetIpSpan = document.getElementById('watcher-target-ip');
+  if (targetIpSpan) targetIpSpan.textContent = agentAddress;
+
+  const watcherCard = document.getElementById('node-live-watcher');
+  const watcherDot = document.getElementById('watcher-status-dot');
+  const watcherTitle = document.getElementById('watcher-title');
+  const watcherSubtitle = document.getElementById('watcher-subtitle');
+  const viewBtn = document.getElementById('btn-view-connected-node');
+  if (watcherCard) watcherCard.classList.remove('connected');
+  if (watcherDot) watcherDot.className = 'status-dot ping-dot waiting';
+  if (watcherTitle) watcherTitle.textContent = 'Waiting for Remote Agent Heartbeat...';
+  if (watcherSubtitle) {
+    watcherSubtitle.innerHTML = `Run the command on your worker node (<code>${escapeHtml(agentAddress)}</code>). Heartbeat will register automatically.`;
+  }
+  if (viewBtn) viewBtn.style.display = 'none';
+
+  // 1. Docker Run Command
+  const dockerRunCmd = `docker run -d \\
+  --name npm-autodiscovery-worker \\
+  --restart unless-stopped \\
+  -v /var/run/docker.sock:/var/run/docker.sock:ro \\
+  -e NPM_URL="${npmUrl}" \\
+  -e NPM_USER="${npmUser}" \\
+  -e NPM_PASS="${npmPass}" \\
+  -e HOST_ID="${nodeId}" \\
+  -e HOST_IP="${agentAddress}" \\
+  -e USE_HOST_PORT="${useHostPort}" \\
+  -e AUTO_DETECT_SSL="${autoSSL}" \\
+  -e DASHBOARD_ENABLED="${headlessMode ? 'false' : 'true'}" \\
+  -e MAIN_NODE_URL="${mainNodeUrl}" \\
+  -e CLUSTER_TOKEN="${clusterToken}" \\
+  -e PUSH_INTERVAL="15s" \\
+  raddadengineer/npm-autodiscovery:latest`;
+
+  // 2. Docker Compose
+  const dockerComposeYaml = `services:
+  # ============================================================================
+  # NPM Auto-Discovery (Remote Worker Agent)
+  # Host ID: ${nodeId} (${agentAddress})
+  # ============================================================================
+  npm-autodiscovery:
+    image: raddadengineer/npm-autodiscovery:latest
+    container_name: npm-autodiscovery-worker
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      # Read-only Docker socket mapping allows listening to local container events
+      - /var/run/docker.sock:/var/run/docker.sock:ro`;
+
+  // 3. .env file
+  const envContent = `# ==============================================================================
+# NPM Auto-Discovery — Remote Worker Node Configuration (.env)
+# Node ID: ${nodeId} | Address: ${agentAddress}
+# ==============================================================================
+
+# Central Nginx Proxy Manager Official API Settings
+NPM_URL=${npmUrl}
+NPM_USER=${npmUser}
+NPM_PASS=${npmPass}
+NPM_TIMEOUT=15s
+
+# Docker Engine Socket on this worker node
+DOCKER_SOCKET=/var/run/docker.sock
+DOCKER_TIMEOUT=10s
+
+# Multi-Host / Remote Worker Node Configuration
+HOST_ID=${nodeId}
+HOST_IP=${agentAddress}
+USE_HOST_PORT=${useHostPort}
+AUTO_DETECT_SSL=${autoSSL}
+
+# Container Label Prefix
+LABEL_PREFIX=npm.
+
+# Headless Worker Mode (0 open listening ports on worker machine)
+DASHBOARD_ENABLED=${headlessMode ? 'false' : 'true'}
+PORT=8080
+LOG_LEVEL=info
+
+# Central Cluster Controller Telemetry Push
+MAIN_NODE_URL=${mainNodeUrl}
+CLUSTER_TOKEN=${clusterToken}
+PUSH_INTERVAL=15s
+`;
+
+  // 4. Test Service (whoami)
+  const whoamiYaml = `services:
+  # ============================================================================
+  # Test Target Service on Worker Node (${nodeId})
+  # Port 8081 will be routed through central NPM to ${agentAddress}:8081
+  # ============================================================================
+  worker-whoami:
+    image: raddadengineer/whoami:latest
+    container_name: worker-whoami
+    restart: unless-stopped
+    ports:
+      - "8081:80"
+    labels:
+      - "npm.frontend.domain=${nodeId}.local"
+      - "npm.frontend.port=80"
+      - "npm.forward_scheme=http"
+      - "npm.websocket=true"
+      - "npm.block_exploits=true"
+      - "npm.ssl.enabled=false"`;
+
+  generatedConfigs = {
+    run: {
+      content: dockerRunCmd,
+      filename: 'docker run command',
+      downloadName: 'install-worker.sh'
+    },
+    compose: {
+      content: dockerComposeYaml,
+      filename: 'docker-compose.worker.yml',
+      downloadName: 'docker-compose.worker.yml'
+    },
+    env: {
+      content: envContent,
+      filename: '.env',
+      downloadName: '.env'
+    },
+    whoami: {
+      content: whoamiYaml,
+      filename: 'docker-compose.whoami.yml',
+      downloadName: 'docker-compose.whoami.yml'
+    }
+  };
+
+  const outputArea = document.getElementById('agent-config-output');
+  if (outputArea) {
+    outputArea.style.display = 'block';
+  }
+
+  renderConfigTab();
+  checkPendingNodeConnection();
+
+  if (notify) {
+    showToast('Agent configuration generated!', 'success');
+  }
+}
+
+function switchConfigTab(tabKey) {
+  activeConfigTab = tabKey;
+  document.querySelectorAll('.config-tab-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.getAttribute('data-cfg-tab') === tabKey);
+  });
+  renderConfigTab();
+}
+
+function renderConfigTab() {
+  const item = generatedConfigs[activeConfigTab];
+  if (!item) return;
+
+  const fnEl = document.getElementById('config-code-filename');
+  if (fnEl) fnEl.textContent = item.filename;
+
+  const codeEl = document.getElementById('config-code-content');
+  if (codeEl) codeEl.textContent = item.content;
+}
+
+function copyCurrentAgentConfig() {
+  const item = generatedConfigs[activeConfigTab];
+  if (!item) return;
+
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(item.content).then(() => {
+      const copyBtnText = document.getElementById('btn-copy-agent-config-text');
+      if (copyBtnText) {
+        copyBtnText.textContent = 'Copied!';
+        setTimeout(() => { copyBtnText.textContent = 'Copy'; }, 2000);
+      }
+      showToast(`${item.filename} copied to clipboard!`, 'success');
+    }).catch(() => {
+      fallbackCopy(item.content, `${item.filename} copied to clipboard!`);
+    });
+  } else {
+    fallbackCopy(item.content, `${item.filename} copied to clipboard!`);
+  }
+}
+
+function downloadCurrentAgentConfig() {
+  const item = generatedConfigs[activeConfigTab];
+  if (!item) return;
+  downloadTextFile(item.downloadName, item.content);
+  showToast(`Downloaded ${item.downloadName}`, 'info');
+}
+
+function downloadTextFile(filename, text) {
+  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function fallbackCopy(text, msg = 'Copied to clipboard!') {
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  document.body.appendChild(textarea);
+  textarea.select();
+  document.execCommand('copy');
+  document.body.removeChild(textarea);
+  showToast(msg, 'success');
+}
+
+function checkPendingNodeConnection() {
+  if (!pendingProvisionNode || !clusterData.length) return;
+  const match = clusterData.find(n => 
+    (pendingProvisionNode.id && n.node_id && n.node_id.toLowerCase() === pendingProvisionNode.id.toLowerCase()) ||
+    (pendingProvisionNode.address && n.node_ip === pendingProvisionNode.address)
+  );
+
+  const watcherCard = document.getElementById('node-live-watcher');
+  const watcherDot = document.getElementById('watcher-status-dot');
+  const watcherTitle = document.getElementById('watcher-title');
+  const watcherSubtitle = document.getElementById('watcher-subtitle');
+  const viewBtn = document.getElementById('btn-view-connected-node');
+
+  if (match && match.status === 'online') {
+    if (watcherCard) watcherCard.classList.add('connected');
+    if (watcherDot) {
+      watcherDot.className = 'status-dot ping-dot connected';
+    }
+    if (watcherTitle) {
+      watcherTitle.innerHTML = `<span style="color:var(--accent-emerald);">🎉 Node Connected & Online!</span>`;
+    }
+    if (watcherSubtitle) {
+      watcherSubtitle.textContent = `Worker '${match.node_id}' (${match.node_ip}) successfully registered! Discovered containers: ${match.container_count || 0}.`;
+    }
+    if (viewBtn) {
+      viewBtn.style.display = 'inline-flex';
+      viewBtn.onclick = () => viewConnectedNode(match.node_id);
+    }
+  }
+}
+
+function viewConnectedNode(nodeId) {
+  closeAddNodeModal();
+  switchTab('cluster-view');
+  setTimeout(() => {
+    const card = document.querySelector(`.node-card[data-node-id="${nodeId}"]`);
+    if (card) {
+      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      card.classList.add('node-card-highlight');
+      setTimeout(() => card.classList.remove('node-card-highlight'), 3500);
+    }
+  }, 100);
+}
+
 

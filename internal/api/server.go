@@ -50,6 +50,7 @@ func (s *Server) Start() error {
 	// Multi-Node Cluster Control Plane Routes
 	mux.HandleFunc("/api/cluster/nodes", s.handleClusterNodes)
 	mux.HandleFunc("/api/cluster/report", s.handleClusterReport)
+	mux.HandleFunc("/api/cluster/setup-info", s.handleClusterSetupInfo)
 
 	// Prometheus Metrics Endpoint (Phase 1)
 	mux.HandleFunc("/metrics", s.handleMetrics)
@@ -350,6 +351,44 @@ func (s *Server) handleClusterReport(w http.ResponseWriter, r *http.Request) {
 		"status":  "ok",
 		"message": "Telemetry report successfully ingested",
 		"node_id": report.NodeID,
+	})
+}
+
+// handleClusterSetupInfo returns configuration parameters needed to provision a new worker node.
+func (s *Server) handleClusterSetupInfo(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	mainNodeURL := s.cfg.MainNodeURL
+	if mainNodeURL == "" {
+		scheme := "http"
+		if r.TLS != nil {
+			scheme = "https"
+		}
+		host := r.Host
+		if host == "" {
+			if s.cfg.HostIP != "" {
+				host = fmt.Sprintf("%s:%d", s.cfg.HostIP, s.cfg.Port)
+			} else {
+				host = fmt.Sprintf("127.0.0.1:%d", s.cfg.Port)
+			}
+		}
+		mainNodeURL = fmt.Sprintf("%s://%s", scheme, host)
+	}
+
+	s.writeJSON(w, http.StatusOK, map[string]interface{}{
+		"cluster_token":            s.cfg.ClusterToken,
+		"cluster_token_configured": s.cfg.ClusterToken != "",
+		"main_node_url":            mainNodeURL,
+		"controller_id":            s.cfg.HostID,
+		"controller_ip":            s.cfg.HostIP,
+		"npm_url":                  s.cfg.NPMURL,
+		"npm_user":                 s.cfg.NPMUser,
+		"default_websocket":        s.cfg.DefaultWebsocket,
+		"default_block_exploits":   s.cfg.DefaultBlockExploits,
+		"auto_detect_ssl":          s.cfg.AutoDetectSSL,
 	})
 }
 
