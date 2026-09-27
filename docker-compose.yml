@@ -45,7 +45,7 @@ services:
   # 3. Optional: Demo Target Service (Only starts with: --profile demo)
   # ============================================================================
   demo-whoami:
-    image: traefik/whoami:latest
+    image: raddadengineer/whoami:latest
     container_name: demo-whoami
     restart: unless-stopped
     profiles:

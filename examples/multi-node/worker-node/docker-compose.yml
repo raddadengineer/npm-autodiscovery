@@ -13,7 +13,7 @@ services:
 
   # Example service on this worker node
   demo-service:
-    image: traefik/whoami:latest
+    image: raddadengineer/whoami:latest
     container_name: demo-service
     restart: unless-stopped
     ports:

@@ -23,7 +23,7 @@ services:
   # Port 8081 on this worker host will be automatically forwarded by central NPM
   # ============================================================================
   worker-whoami:
-    image: traefik/whoami:latest
+    image: raddadengineer/whoami:latest
     container_name: worker-whoami
     restart: unless-stopped
     ports:

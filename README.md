@@ -318,7 +318,7 @@ services:
 
   # 3. Demo Target Service (Auto-Discovered & Provisioned)
   demo-whoami:
-    image: traefik/whoami:latest
+    image: raddadengineer/whoami:latest
     container_name: demo-whoami
     restart: unless-stopped
     networks:
