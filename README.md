@@ -170,7 +170,7 @@ version: '3.8'
 
 services:
   npm-autodiscovery:
-    image: sampson/npm-autodiscovery:latest
+    image: raddadengineer/npm-autodiscovery:latest
     build: .
     container_name: npm-autodiscovery
     restart: unless-stopped
