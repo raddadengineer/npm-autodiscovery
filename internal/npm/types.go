@@ -85,6 +85,19 @@ type ProxyHostRequest struct {
 	Meta                  map[string]interface{} `json:"meta"`
 }
 
+// Certificate represents an SSL certificate record in Nginx Proxy Manager.
+type Certificate struct {
+	ID          int                    `json:"id"`
+	CreatedOn   string                 `json:"created_on"`
+	ModifiedOn  string                 `json:"modified_on"`
+	OwnerUserID int                    `json:"owner_user_id"`
+	Provider    string                 `json:"provider"`
+	NiceName    string                 `json:"nice_name"`
+	DomainNames []string               `json:"domain_names"`
+	ExpiresOn   string                 `json:"expires_on"`
+	Meta        map[string]interface{} `json:"meta,omitempty"`
+}
+
 // Stream represents an existing Layer 4 TCP/UDP stream record in Nginx Proxy Manager.
 type Stream struct {
 	ID             int                    `json:"id"`

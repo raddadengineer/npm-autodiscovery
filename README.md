@@ -82,7 +82,7 @@ Add these labels to any Docker container (via `docker-compose.yml` or `docker ru
 | `npm.forward_host` | string | Auto | Custom target host or IP override. | `192.168.1.50` or `my-service` |
 | `npm.ssl.enabled` | boolean | `false` | Enable SSL for this proxy host. | `true` |
 | `npm.ssl.forced` | boolean | `false` | Force HTTP to HTTPS redirection. | `true` |
-| `npm.certificate_id` | int/str | `0` | NPM Certificate ID (e.g. `1`) or `"new"` for Let's Encrypt. | `1` |
+| `npm.certificate_id` | int/str | `auto` | NPM Certificate ID, `"auto"` (matches domain against NPM certs), `"new"`, or `0` (HTTP only). | `auto`, `2`, `0` |
 | `npm.websocket` | boolean | `true` | Enable WebSocket upgrade support (`proxy_set_header Upgrade`). | `true` |
 | `npm.block_exploits` | boolean | `true` | Enable NPM exploit block filters. | `true` |
 | `npm.caching` | boolean | `false` | Enable Nginx static asset caching. | `false` |

@@ -65,6 +65,9 @@ type ContainerProxyConfig struct {
 	SSLEnabled            bool
 	SSLForced             bool
 	CertificateID         interface{}
+	ExplicitCertID        bool // True if certificate_id label was provided and not "auto"
+	ExplicitSSL           bool // True if ssl.enabled/ssl label was explicitly specified
+	ExplicitForced        bool // True if ssl.forced label was explicitly specified
 	AllowWebsocketUpgrade bool
 	BlockExploits         bool
 	CachingEnabled        bool
@@ -172,21 +175,30 @@ func ParseContainerLabels(c *docker.ContainerInspect, cfg *config.Config) (*Cont
 
 	// SSL Enabled
 	sslEnabled := cfg.DefaultSSLEnabled
+	explicitSSL := false
 	if val, ok := getLabelValue(labels, cfg.LabelPrefix, "ssl.enabled", "ssl", "tls"); ok {
 		sslEnabled = parseBool(val, sslEnabled)
+		explicitSSL = true
 	}
 
 	// SSL Forced
 	sslForced := cfg.DefaultSSLForced
+	explicitForced := false
 	if val, ok := getLabelValue(labels, cfg.LabelPrefix, "ssl.forced", "ssl_forced", "force_ssl"); ok {
 		sslForced = parseBool(val, sslForced)
+		explicitForced = true
 	}
 
 	// Certificate ID
 	var certID interface{} = 0
+	explicitCertID := false
 	if val, ok := getLabelValue(labels, cfg.LabelPrefix, "certificate_id", "ssl.certificate_id", "cert_id"); ok {
 		val = strings.TrimSpace(val)
-		if val != "" {
+		if strings.EqualFold(val, "auto") {
+			explicitCertID = false
+			certID = 0
+		} else if val != "" {
+			explicitCertID = true
 			if idNum, err := strconv.Atoi(val); err == nil {
 				certID = idNum
 			} else {
@@ -348,6 +360,9 @@ func ParseContainerLabels(c *docker.ContainerInspect, cfg *config.Config) (*Cont
 		SSLEnabled:            sslEnabled,
 		SSLForced:             sslForced,
 		CertificateID:         certID,
+		ExplicitCertID:        explicitCertID,
+		ExplicitSSL:           explicitSSL,
+		ExplicitForced:        explicitForced,
 		AllowWebsocketUpgrade: websocket,
 		BlockExploits:         blockExploits,
 		CachingEnabled:        caching,

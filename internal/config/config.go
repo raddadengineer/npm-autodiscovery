@@ -36,6 +36,8 @@ type Config struct {
 	DefaultSSLForced     bool   `json:"default_ssl_forced"`
 	DefaultWebsocket     bool   `json:"default_websocket"`
 	DefaultBlockExploits bool   `json:"default_block_exploits"`
+	AutoCertificate      bool   `json:"auto_certificate"` // Auto-detect and match NPM SSL certificates based on domain
+	AutoSSLForced        bool   `json:"auto_ssl_forced"`  // Force HTTPS when a matching certificate is auto-detected
 
 	// HealthCheck Routing Defaults (Phase 1)
 	DefaultHealthcheckEnabled  bool          `json:"default_healthcheck_enabled"`
@@ -188,6 +190,8 @@ func LoadFromEnv() (*Config, error) {
 		DefaultSSLForced:           getEnvBool("DEFAULT_SSL_FORCED", false),
 		DefaultWebsocket:           getEnvBool("DEFAULT_WEBSOCKET", true),
 		DefaultBlockExploits:       getEnvBool("DEFAULT_BLOCK_EXPLOITS", true),
+		AutoCertificate:            getEnvBool("AUTO_CERTIFICATE", getEnvBool("AUTO_SSL", true)),
+		AutoSSLForced:              getEnvBool("AUTO_SSL_FORCED", true),
 		DefaultHealthcheckEnabled:  defaultHealthcheckEnabled,
 		DefaultHealthcheckTimeout:  defaultHealthcheckTimeout,
 		DefaultHealthcheckFallback: defaultHealthcheckFallback,

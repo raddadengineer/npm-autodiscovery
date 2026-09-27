@@ -173,6 +173,10 @@ type Syncer struct {
 	dockerVersion  string
 
 	syncTrigger chan struct{}
+
+	certCache       []npm.Certificate
+	certCacheExpiry time.Time
+	certCacheMu     sync.RWMutex
 }
 
 // NewSyncer instantiates the syncer with dependencies.
@@ -602,6 +606,75 @@ func (s *Syncer) cancelPendingHealthCheck(containerID string) {
 	}
 }
 
+// getCertificates retrieves all SSL certificates from NPM with TTL caching.
+func (s *Syncer) getCertificates(ctx context.Context) ([]npm.Certificate, error) {
+	s.certCacheMu.RLock()
+	if time.Now().Before(s.certCacheExpiry) && s.certCache != nil {
+		certs := s.certCache
+		s.certCacheMu.RUnlock()
+		return certs, nil
+	}
+	s.certCacheMu.RUnlock()
+
+	if s.npmClient == nil {
+		return nil, fmt.Errorf("npm client is nil")
+	}
+
+	certs, err := s.npmClient.GetCertificates(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	s.certCacheMu.Lock()
+	s.certCache = certs
+	s.certCacheExpiry = time.Now().Add(30 * time.Second)
+	s.certCacheMu.Unlock()
+
+	return certs, nil
+}
+
+// resolveCertificate determines the appropriate SSL certificate ID based on explicit settings or domain auto-matching.
+func (s *Syncer) resolveCertificate(ctx context.Context, domains []string, explicitCertID bool, currentCertID interface{}, explicitSSL bool, currentSSL bool, explicitForced bool, currentForced bool) (interface{}, bool, bool) {
+	// 1. Explicit certificate ID provided by user label/config (not "auto")
+	if explicitCertID {
+		return currentCertID, currentSSL, currentForced
+	}
+
+	// 2. SSL explicitly disabled by user (e.g. npm.ssl=false or npm.ssl.enabled=false)
+	if explicitSSL && !currentSSL {
+		return 0, false, false
+	}
+
+	// 3. Auto-certificate discovery disabled globally
+	if !s.cfg.AutoCertificate {
+		return currentCertID, currentSSL, currentForced
+	}
+
+	// 4. Query NPM certificates and match against domains
+	certs, err := s.getCertificates(ctx)
+	if err != nil {
+		s.EmitLog(LevelWarn, "ssl", fmt.Sprintf("Failed to query NPM certificates for auto-discovery: %v", err), "")
+		return currentCertID, currentSSL, currentForced
+	}
+
+	if len(certs) == 0 {
+		return 0, currentSSL, currentForced
+	}
+
+	matchedCert := FindBestMatchingCertificateForDomains(certs, domains)
+	if matchedCert != nil {
+		forced := currentForced
+		if !explicitForced && s.cfg.AutoSSLForced {
+			forced = true
+		}
+		s.EmitLog(LevelInfo, "ssl", fmt.Sprintf("Auto-detected SSL certificate #%d (%s) for %v", matchedCert.ID, matchedCert.NiceName, domains), "")
+		return matchedCert.ID, true, forced
+	}
+
+	// No matching certificate found (e.g. .local domain): defaults to HTTP only
+	return 0, false, false
+}
+
 // reconcileProxyInNPM checks if proxy host already exists, creates or updates as needed.
 func (s *Syncer) reconcileProxyInNPM(ctx context.Context, inspect *docker.ContainerInspect, proxyCfg *ContainerProxyConfig, resMethod string) {
 	if s.npmClient == nil {
@@ -639,6 +712,21 @@ func (s *Syncer) reconcileProxyInNPM(ctx context.Context, inspect *docker.Contai
 			AdvancedConfig: loc.AdvancedConfig,
 		})
 	}
+
+	// Auto-detect and resolve SSL certificate if applicable
+	certID, sslEnabled, sslForced := s.resolveCertificate(
+		ctx,
+		proxyCfg.DomainNames,
+		proxyCfg.ExplicitCertID,
+		proxyCfg.CertificateID,
+		proxyCfg.ExplicitSSL,
+		proxyCfg.SSLEnabled,
+		proxyCfg.ExplicitForced,
+		proxyCfg.SSLForced,
+	)
+	proxyCfg.CertificateID = certID
+	proxyCfg.SSLEnabled = sslEnabled
+	proxyCfg.SSLForced = sslForced
 
 	desiredReq := &npm.ProxyHostRequest{
 		DomainNames:           proxyCfg.DomainNames,
@@ -1432,6 +1520,12 @@ func (s *Syncer) reconcileIaCHost(ctx context.Context, sh iac.StaticProxyHost) {
 		})
 	}
 
+	explicitCert := sh.CertificateID != nil && sh.CertificateID != 0 && sh.CertificateID != "0" && !strings.EqualFold(fmt.Sprintf("%v", sh.CertificateID), "auto")
+	certID, sslEnabled, sslForced := s.resolveCertificate(ctx, sh.DomainNames, explicitCert, sh.CertificateID, false, sh.SSLEnabled, false, sh.SSLForced)
+	sh.CertificateID = certID
+	sh.SSLEnabled = sslEnabled
+	sh.SSLForced = sslForced
+
 	desiredReq := &npm.ProxyHostRequest{
 		DomainNames:           sh.DomainNames,
 		ForwardScheme:         sh.ForwardScheme,
@@ -1569,6 +1663,12 @@ func (s *Syncer) reconcilePVERoute(ctx context.Context, route pve.PVERoute) {
 			AdvancedConfig: loc.AdvancedConfig,
 		})
 	}
+
+	explicitCert := route.CertificateID != nil && route.CertificateID != 0 && route.CertificateID != "0" && !strings.EqualFold(fmt.Sprintf("%v", route.CertificateID), "auto")
+	certID, sslEnabled, sslForced := s.resolveCertificate(ctx, route.DomainNames, explicitCert, route.CertificateID, false, route.SSLEnabled, false, route.SSLForced)
+	route.CertificateID = certID
+	route.SSLEnabled = sslEnabled
+	route.SSLForced = sslForced
 
 	desiredReq := &npm.ProxyHostRequest{
 		DomainNames:           route.DomainNames,
@@ -1708,6 +1808,12 @@ func (s *Syncer) reconcileLXDRoute(ctx context.Context, route lxd.LXDRoute) {
 			AdvancedConfig: loc.AdvancedConfig,
 		})
 	}
+
+	explicitCert := route.CertificateID != nil && route.CertificateID != 0 && route.CertificateID != "0" && !strings.EqualFold(fmt.Sprintf("%v", route.CertificateID), "auto")
+	certID, sslEnabled, sslForced := s.resolveCertificate(ctx, route.DomainNames, explicitCert, route.CertificateID, false, route.SSLEnabled, false, route.SSLForced)
+	route.CertificateID = certID
+	route.SSLEnabled = sslEnabled
+	route.SSLForced = sslForced
 
 	desiredReq := &npm.ProxyHostRequest{
 		DomainNames:           route.DomainNames,
