@@ -1,9 +1,6 @@
 services:
   npm-autodiscovery:
     image: raddadengineer/npm-autodiscovery:latest
-    build:
-      context: .
-      dockerfile: Dockerfile
     container_name: npm-autodiscovery
     restart: unless-stopped
     ports:

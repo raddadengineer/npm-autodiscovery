@@ -3,9 +3,6 @@ services:
   # 1. NPM Auto-Discovery (Standalone Service - Always Runs)
   # ============================================================================
   npm-autodiscovery:
-    build:
-      context: .
-      dockerfile: Dockerfile
     image: raddadengineer/npm-autodiscovery:latest
     container_name: npm-autodiscovery
     restart: unless-stopped
