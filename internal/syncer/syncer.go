@@ -12,6 +12,7 @@ import (
 
 	"github.com/sampson/npm-autodiscovery/internal/config"
 	"github.com/sampson/npm-autodiscovery/internal/docker"
+	"github.com/sampson/npm-autodiscovery/internal/iac"
 	"github.com/sampson/npm-autodiscovery/internal/npm"
 )
 
@@ -58,6 +59,8 @@ type ManagedProxy struct {
 	CertificateID    any       `json:"certificate_id"`
 	Websocket        bool      `json:"websocket"`
 	BlockExploits    bool      `json:"block_exploits"`
+	Source           string    `json:"source"` // "docker" or "iac"
+	SourceFile       string    `json:"source_file,omitempty"`
 	Status           string    `json:"status"` // "active", "syncing", "error"
 	LastSynced       time.Time `json:"last_synced"`
 }
@@ -336,7 +339,7 @@ func (s *Syncer) reconcileProxyInNPM(ctx context.Context, inspect *docker.Contai
 
 	} else {
 		// Check ownership in multi-host setups
-		isManaged, hostOwner, _, _ := getManagedInfo(matchedHost)
+		isManaged, _, hostOwner, _, _, _ := getManagedInfo(matchedHost)
 		if isManaged && hostOwner != "" && hostOwner != s.cfg.HostID {
 			s.EmitLog(LevelWarn, "sync", fmt.Sprintf("Domain(s) %v are managed by another host (%s). Skipping update on this node (%s) to prevent conflict.", proxyCfg.DomainNames, hostOwner, s.cfg.HostID), "")
 			return
@@ -383,72 +386,93 @@ func (s *Syncer) cleanupContainerProxies(ctx context.Context, containerID, conta
 	}
 }
 
-// performFullSync scans all running containers on this host and reconciles with NPM proxy hosts.
+// performFullSync scans running containers and static IaC manifests, reconciling all with NPM.
 func (s *Syncer) performFullSync(ctx context.Context, triggerSource string) {
 	s.EmitLog(LevelInfo, "sync", fmt.Sprintf("Running full discovery scan on host '%s' (%s)", s.cfg.HostID, triggerSource), "")
 
-	containers, err := s.dockerClient.ListContainers(ctx, false)
-	if err != nil {
-		s.EmitLog(LevelError, "docker", "Full sync failed to list running containers", err.Error())
-		return
-	}
-
+	// 1. Docker Containers Sync
 	runningContainerIDs := make(map[string]bool)
 	runningContainerNames := make(map[string]bool)
+	syncedDockerCount := 0
 
-	syncedCount := 0
-	for _, c := range containers {
-		runningContainerIDs[c.ID] = true
-		for _, name := range c.Names {
-			runningContainerNames[strings.TrimPrefix(name, "/")] = true
+	containers, err := s.dockerClient.ListContainers(ctx, false)
+	if err == nil {
+		for _, c := range containers {
+			runningContainerIDs[c.ID] = true
+			for _, name := range c.Names {
+				runningContainerNames[strings.TrimPrefix(name, "/")] = true
+			}
+
+			inspect, err := s.dockerClient.InspectContainer(ctx, c.ID)
+			if err != nil {
+				continue
+			}
+
+			proxyCfg, shouldProxy, err := ParseContainerLabels(inspect, s.cfg)
+			if err != nil || !shouldProxy || proxyCfg == nil {
+				continue
+			}
+
+			targetHost, resMethod, err := ResolveForwardHost(inspect, proxyCfg, s.cfg)
+			if err != nil {
+				s.EmitLog(LevelWarn, "sync", fmt.Sprintf("Could not resolve host for %s: %s", inspect.Name, err), "")
+				continue
+			}
+			proxyCfg.ForwardHost = targetHost
+
+			s.reconcileProxyInNPM(ctx, inspect, proxyCfg, resMethod)
+			syncedDockerCount++
 		}
-
-		// Inspect container for full network and label details
-		inspect, err := s.dockerClient.InspectContainer(ctx, c.ID)
-		if err != nil {
-			continue
-		}
-
-		proxyCfg, shouldProxy, err := ParseContainerLabels(inspect, s.cfg)
-		if err != nil || !shouldProxy || proxyCfg == nil {
-			continue
-		}
-
-		targetHost, resMethod, err := ResolveForwardHost(inspect, proxyCfg, s.cfg)
-		if err != nil {
-			s.EmitLog(LevelWarn, "sync", fmt.Sprintf("Could not resolve host for %s: %s", inspect.Name, err), "")
-			continue
-		}
-		proxyCfg.ForwardHost = targetHost
-
-		s.reconcileProxyInNPM(ctx, inspect, proxyCfg, resMethod)
-		syncedCount++
+	} else {
+		s.EmitLog(LevelWarn, "docker", "Could not list Docker containers (Docker socket may be inactive)", err.Error())
 	}
 
-	// Orphan cleanup: ONLY prune proxy hosts created by THIS host whose containers are no longer running
+	// 2. Infrastructure-as-Code (IaC) Manifests Sync
+	activeIaCDomains := make(map[string]bool)
+	syncedIaCCount := 0
+	if s.cfg.RoutesFile != "" || s.cfg.RoutesDir != "" {
+		syncedIaCCount = s.syncIaCRoutes(ctx, activeIaCDomains)
+	}
+
+	// 3. Orphan Cleanup
 	existingHosts, err := s.npmClient.GetProxyHosts(ctx)
 	if err == nil {
 		for _, host := range existingHosts {
-			isManaged, hostOwner, cID, cName := getManagedInfo(&host)
+			isManaged, source, hostOwner, cID, cName, _ := getManagedInfo(&host)
 			if isManaged {
 				// Safety check for multi-host clusters: NEVER delete proxies belonging to another host!
 				if hostOwner != "" && hostOwner != s.cfg.HostID {
 					continue
 				}
 
-				stillRunning := false
-				if cID != "" && runningContainerIDs[cID] {
-					stillRunning = true
-				}
-				if cName != "" && runningContainerNames[cName] {
-					stillRunning = true
-				}
+				if source == "iac" {
+					// Only prune IaC proxy if IaC provider is configured and domain is missing from manifests
+					if (s.cfg.RoutesFile != "" || s.cfg.RoutesDir != "") && len(host.DomainNames) > 0 {
+						primaryDomain := strings.ToLower(host.DomainNames[0])
+						if !activeIaCDomains[primaryDomain] {
+							s.EmitLog(LevelWarn, "sync", fmt.Sprintf("Found orphaned IaC proxy host #%d (domains: %v) removed from manifests - pruning", host.ID, host.DomainNames), "")
+							if delErr := s.npmClient.DeleteProxyHost(ctx, host.ID); delErr == nil {
+								s.EmitLog(LevelSuccess, "npm", fmt.Sprintf("Pruned orphan IaC proxy host #%d", host.ID), "")
+								s.removeTrackedProxy(cID, host.DomainNames)
+							}
+						}
+					}
+				} else {
+					// Docker proxy host orphan cleanup
+					stillRunning := false
+					if cID != "" && runningContainerIDs[cID] {
+						stillRunning = true
+					}
+					if cName != "" && runningContainerNames[cName] {
+						stillRunning = true
+					}
 
-				if !stillRunning {
-					s.EmitLog(LevelWarn, "sync", fmt.Sprintf("Found orphaned proxy host #%d for dead container '%s' on host '%s' (domains: %v) - pruning", host.ID, cName, s.cfg.HostID, host.DomainNames), "")
-					if delErr := s.npmClient.DeleteProxyHost(ctx, host.ID); delErr == nil {
-						s.EmitLog(LevelSuccess, "npm", fmt.Sprintf("Pruned orphan proxy host #%d", host.ID), "")
-						s.removeTrackedProxy(cID, host.DomainNames)
+					if !stillRunning && cID != "" {
+						s.EmitLog(LevelWarn, "sync", fmt.Sprintf("Found orphaned Docker proxy host #%d for dead container '%s' on host '%s' (domains: %v) - pruning", host.ID, cName, s.cfg.HostID, host.DomainNames), "")
+						if delErr := s.npmClient.DeleteProxyHost(ctx, host.ID); delErr == nil {
+							s.EmitLog(LevelSuccess, "npm", fmt.Sprintf("Pruned orphan Docker proxy host #%d", host.ID), "")
+							s.removeTrackedProxy(cID, host.DomainNames)
+						}
 					}
 				}
 			}
@@ -459,7 +483,151 @@ func (s *Syncer) performFullSync(ctx context.Context, triggerSource string) {
 	s.lastFullSync = time.Now()
 	s.mu.Unlock()
 
-	s.EmitLog(LevelSuccess, "sync", fmt.Sprintf("Full sync completed. Processed %d active discovered proxies across %d containers", syncedCount, len(containers)), "")
+	s.EmitLog(LevelSuccess, "sync", fmt.Sprintf("Full sync completed. Processed %d Docker proxies and %d IaC routes", syncedDockerCount, syncedIaCCount), "")
+}
+
+// syncIaCRoutes loads and applies declarative routes from static YAML/JSON manifests.
+func (s *Syncer) syncIaCRoutes(ctx context.Context, activeDomains map[string]bool) int {
+	var allHosts []iac.StaticProxyHost
+
+	if s.cfg.RoutesFile != "" {
+		hosts, err := iac.LoadRoutes(s.cfg.RoutesFile)
+		if err != nil {
+			s.EmitLog(LevelError, "iac", fmt.Sprintf("Failed loading routes file '%s'", s.cfg.RoutesFile), err.Error())
+		} else {
+			allHosts = append(allHosts, hosts...)
+		}
+	}
+
+	if s.cfg.RoutesDir != "" {
+		hosts, err := iac.LoadRoutes(s.cfg.RoutesDir)
+		if err != nil {
+			s.EmitLog(LevelError, "iac", fmt.Sprintf("Failed loading routes directory '%s'", s.cfg.RoutesDir), err.Error())
+		} else {
+			allHosts = append(allHosts, hosts...)
+		}
+	}
+
+	syncedCount := 0
+	for _, sh := range allHosts {
+		if len(sh.DomainNames) > 0 {
+			activeDomains[strings.ToLower(sh.DomainNames[0])] = true
+		}
+		s.reconcileIaCHost(ctx, sh)
+		syncedCount++
+	}
+
+	return syncedCount
+}
+
+// reconcileIaCHost creates or updates a proxy host declared in static IaC manifests.
+func (s *Syncer) reconcileIaCHost(ctx context.Context, sh iac.StaticProxyHost) {
+	existingHosts, err := s.npmClient.GetProxyHosts(ctx)
+	if err != nil {
+		s.EmitLog(LevelError, "npm", "Failed to retrieve existing proxy hosts for IaC reconcile", err.Error())
+		return
+	}
+
+	var matchedHost *npm.ProxyHost
+	for i := range existingHosts {
+		host := &existingHosts[i]
+		if domainsOverlap(host.DomainNames, sh.DomainNames) {
+			matchedHost = host
+			break
+		}
+	}
+
+	advConfig := fmt.Sprintf("%s [source: iac] [host_id: %s]\n", HeaderComment, s.cfg.HostID)
+	if sh.AdvancedConfig != "" {
+		advConfig += sh.AdvancedConfig + "\n"
+	}
+
+	desiredReq := &npm.ProxyHostRequest{
+		DomainNames:           sh.DomainNames,
+		ForwardScheme:         sh.ForwardScheme,
+		ForwardHost:           sh.ForwardHost,
+		ForwardPort:           sh.ForwardPort,
+		CertificateID:         sh.CertificateID,
+		SSLForced:             sh.SSLForced,
+		HSTSEnabled:           sh.HSTSEnabled,
+		HSTSSubdomains:        sh.HSTSSubdomains,
+		CachingEnabled:        sh.CachingEnabled,
+		AllowWebsocketUpgrade: sh.AllowWebsocketUpgrade,
+		BlockExploits:         sh.BlockExploits,
+		HTTP2Support:          sh.HTTP2Support,
+		AdvancedConfig:        advConfig,
+		AccessListID:          sh.AccessListID,
+		Meta: map[string]interface{}{
+			"managed_by":  ManagedByTag,
+			"source":      "iac",
+			"host_id":     s.cfg.HostID,
+			"source_file": sh.SourceFile,
+			"synced_at":   time.Now().Format(time.RFC3339),
+		},
+	}
+
+	if matchedHost == nil {
+		s.EmitLog(LevelInfo, "npm", fmt.Sprintf("Creating IaC proxy host for %v -> %s:%d (file: %s)", sh.DomainNames, sh.ForwardHost, sh.ForwardPort, sh.SourceFile), "")
+		created, err := s.npmClient.CreateProxyHost(ctx, desiredReq)
+		if err != nil {
+			s.EmitLog(LevelError, "npm", fmt.Sprintf("Failed to create IaC proxy host for %v", sh.DomainNames), err.Error())
+			return
+		}
+
+		s.EmitLog(LevelSuccess, "npm", fmt.Sprintf("Successfully created IaC proxy host ID #%d for %v", created.ID, created.DomainNames), fmt.Sprintf("Target: %s:%d", created.ForwardHost, created.ForwardPort))
+		s.saveTrackedIaCProxy(created.ID, sh, "active")
+	} else {
+		isManaged, _, hostOwner, _, _, _ := getManagedInfo(matchedHost)
+		if isManaged && hostOwner != "" && hostOwner != s.cfg.HostID {
+			s.EmitLog(LevelWarn, "sync", fmt.Sprintf("IaC domain(s) %v are managed by another host (%s). Skipping update.", sh.DomainNames, hostOwner), "")
+			return
+		}
+
+		needsUpdate, diffReason := isUpdateRequired(matchedHost, desiredReq)
+		if !needsUpdate {
+			s.saveTrackedIaCProxy(matchedHost.ID, sh, "active")
+			return
+		}
+
+		s.EmitLog(LevelInfo, "npm", fmt.Sprintf("Updating IaC proxy host ID #%d for %v (%s)", matchedHost.ID, sh.DomainNames, diffReason), "")
+		updated, err := s.npmClient.UpdateProxyHost(ctx, matchedHost.ID, desiredReq)
+		if err != nil {
+			s.EmitLog(LevelError, "npm", fmt.Sprintf("Failed to update IaC proxy host #%d", matchedHost.ID), err.Error())
+			return
+		}
+
+		s.EmitLog(LevelSuccess, "npm", fmt.Sprintf("Successfully updated IaC proxy host ID #%d for %v", updated.ID, updated.DomainNames), diffReason)
+		s.saveTrackedIaCProxy(updated.ID, sh, "active")
+	}
+}
+
+// saveTrackedIaCProxy records a static declarative proxy host into tracking state.
+func (s *Syncer) saveTrackedIaCProxy(npmID int, host iac.StaticProxyHost, status string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	key := strings.ToLower(host.DomainNames[0])
+	s.trackedProxies[key] = &ManagedProxy{
+		NPMHostID:        npmID,
+		HostID:           s.cfg.HostID,
+		ContainerID:      "iac-manifest",
+		ContainerName:    "iac:" + host.SourceFile,
+		Image:            "manifest:" + host.SourceFile,
+		DomainNames:      host.DomainNames,
+		ForwardScheme:    host.ForwardScheme,
+		ForwardHost:      host.ForwardHost,
+		ForwardPort:      host.ForwardPort,
+		ResolutionMethod: "iac-manifest (" + host.SourceFile + ")",
+		SSLEnabled:       host.SSLEnabled,
+		SSLForced:        host.SSLForced,
+		CertificateID:    host.CertificateID,
+		Websocket:        host.AllowWebsocketUpgrade,
+		BlockExploits:    host.BlockExploits,
+		Source:           "iac",
+		SourceFile:       host.SourceFile,
+		Status:           status,
+		LastSynced:       time.Now(),
+	}
 }
 
 // saveTrackedProxy records an active managed proxy into the local state.
@@ -705,8 +873,8 @@ func domainsOverlap(a, b []string) bool {
 
 // Helper: checks if a proxy host in NPM is managed by a given host and container
 func (s *Syncer) isManagedByThisHostAndContainer(host *npm.ProxyHost, containerID, containerName string) bool {
-	isManaged, hostOwner, cID, cName := getManagedInfo(host)
-	if !isManaged {
+	isManaged, source, hostOwner, cID, cName, _ := getManagedInfo(host)
+	if !isManaged || source == "iac" {
 		return false
 	}
 	// Multi-host safety check: only match if owned by this host (or unowned legacy)
@@ -722,11 +890,15 @@ func (s *Syncer) isManagedByThisHostAndContainer(host *npm.ProxyHost, containerI
 	return false
 }
 
-// Helper: extracts managed_by metadata, host ID, and container ID/name from NPM proxy host
-func getManagedInfo(host *npm.ProxyHost) (isManaged bool, hostID, containerID, containerName string) {
+// Helper: extracts managed_by metadata, source (docker/iac), host ID, and container ID/name from NPM proxy host
+func getManagedInfo(host *npm.ProxyHost) (isManaged bool, source, hostID, containerID, containerName, sourceFile string) {
+	source = "docker" // default source
 	if host.Meta != nil {
 		if mb, ok := host.Meta["managed_by"].(string); ok && mb == ManagedByTag {
 			isManaged = true
+			if src, ok := host.Meta["source"].(string); ok && src != "" {
+				source = src
+			}
 			if hid, ok := host.Meta["host_id"].(string); ok {
 				hostID = hid
 			}
@@ -736,12 +908,18 @@ func getManagedInfo(host *npm.ProxyHost) (isManaged bool, hostID, containerID, c
 			if name, ok := host.Meta["container_name"].(string); ok {
 				containerName = name
 			}
+			if sf, ok := host.Meta["source_file"].(string); ok {
+				sourceFile = sf
+			}
 			return
 		}
 	}
 	// Fallback to checking HeaderComment in advanced_config
 	if strings.Contains(host.AdvancedConfig, HeaderComment) {
 		isManaged = true
+		if strings.Contains(host.AdvancedConfig, "[source: iac]") {
+			source = "iac"
+		}
 		// Extract [host_id: ...] if present
 		if idx := strings.Index(host.AdvancedConfig, "[host_id: "); idx != -1 {
 			rem := host.AdvancedConfig[idx+len("[host_id: "):]

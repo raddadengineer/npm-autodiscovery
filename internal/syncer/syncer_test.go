@@ -49,12 +49,12 @@ func TestMultiHostIsolation(t *testing.T) {
 	}
 
 	// 3. getManagedInfo extracts host_id correctly
-	isManagedA, hostIDA, cidA, _ := getManagedInfo(hostAlphaProxy)
+	isManagedA, _, hostIDA, cidA, _, _ := getManagedInfo(hostAlphaProxy)
 	if !isManagedA || hostIDA != "node-alpha" || cidA != "cid-alpha-123" {
 		t.Errorf("Failed extracting Alpha managed info: isManaged=%v, hostID=%s, cid=%s", isManagedA, hostIDA, cidA)
 	}
 
-	isManagedB, hostIDB, cidB, _ := getManagedInfo(hostBetaProxy)
+	isManagedB, _, hostIDB, cidB, _, _ := getManagedInfo(hostBetaProxy)
 	if !isManagedB || hostIDB != "node-beta" || cidB != "cid-beta-456" {
 		t.Errorf("Failed extracting Beta managed info: isManaged=%v, hostID=%s, cid=%s", isManagedB, hostIDB, cidB)
 	}
@@ -65,7 +65,7 @@ func TestMultiHostIsolation(t *testing.T) {
 		DomainNames:    []string{"gamma.example.com"},
 		AdvancedConfig: "# Managed by NPM-AutoDiscovery [host_id: node-gamma]\nclient_max_body_size 10M;",
 	}
-	isManagedG, hostIDG, _, _ := getManagedInfo(hostLegacyWithHeader)
+	isManagedG, _, hostIDG, _, _, _ := getManagedInfo(hostLegacyWithHeader)
 	if !isManagedG || hostIDG != "node-gamma" {
 		t.Errorf("Failed extracting host_id from AdvancedConfig: isManaged=%v, hostID=%s", isManagedG, hostIDG)
 	}

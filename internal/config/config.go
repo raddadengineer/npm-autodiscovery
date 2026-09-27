@@ -42,6 +42,10 @@ type Config struct {
 	HostIP      string `json:"host_ip"`       // Public/LAN IP or hostname of this Docker host (used for cross-host routing)
 	UseHostPort bool   `json:"use_host_port"` // Prefer published host port over container port when routing across hosts
 
+	// Infrastructure-as-Code (IaC) / Static File Provider
+	RoutesFile string `json:"routes_file"` // Path to a declarative static routes YAML/JSON file
+	RoutesDir  string `json:"routes_dir"`  // Path to a directory containing declarative routes YAML/JSON files
+
 	// Label Configuration
 	LabelPrefix string `json:"label_prefix"`
 
@@ -122,6 +126,8 @@ func LoadFromEnv() (*Config, error) {
 		HostID:               hostID,
 		HostIP:               hostIP,
 		UseHostPort:          useHostPort,
+		RoutesFile:           getEnv("ROUTES_FILE", getEnv("CONFIG_FILE", "")),
+		RoutesDir:            getEnv("ROUTES_DIR", getEnv("CONFIG_DIR", "")),
 		LabelPrefix:          getEnv("LABEL_PREFIX", "npm."),
 		Port:                 port,
 		LogLevel:             strings.ToLower(getEnv("LOG_LEVEL", "info")),

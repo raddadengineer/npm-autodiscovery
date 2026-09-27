@@ -240,6 +240,11 @@ function renderProxiesTable(filterText = '') {
 
     const lastSyncTime = proxy.last_synced ? new Date(proxy.last_synced).toLocaleTimeString() : 'N/A';
 
+    let sourceBadge = `<span class="badge badge-cyan" style="font-size: 0.7rem;">🐳 Docker</span>`;
+    if (proxy.source === 'iac') {
+      sourceBadge = `<span class="badge badge-amber" style="font-size: 0.7rem;" title="IaC Manifest: ${escapeHtml(proxy.source_file || 'routes.yaml')}">📄 IaC</span>`;
+    }
+
     tr.innerHTML = `
       <td><span class="badge badge-emerald">● Live</span></td>
       <td><div class="domain-chip-group">${domainChips}</div></td>
@@ -250,14 +255,17 @@ function renderProxiesTable(filterText = '') {
         </span>
       </td>
       <td>
-        <span class="badge badge-gray" style="font-family: var(--font-mono); font-size: 0.75rem;">
-          ${escapeHtml(proxy.host_id || 'local')}
-        </span>
+        <div style="display: flex; flex-direction: column; gap: 0.2rem;">
+          <span class="badge badge-gray" style="font-family: var(--font-mono); font-size: 0.75rem;">
+            ${escapeHtml(proxy.host_id || 'local')}
+          </span>
+          ${sourceBadge}
+        </div>
       </td>
       <td>
         <div class="container-info">
           <span class="container-title">${escapeHtml(proxy.container_name)}</span>
-          <span class="container-sub">${escapeHtml(proxy.image || proxy.container_id.substring(0, 12))}</span>
+          <span class="container-sub">${escapeHtml(proxy.image || (proxy.source_file ? 'manifest: ' + proxy.source_file : proxy.container_id.substring(0, 12)))}</span>
         </div>
       </td>
       <td>${sslBadge}</td>

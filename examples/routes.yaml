@@ -1,0 +1,62 @@
+# ==============================================================================
+# NPM Auto-Discovery: Declarative Infrastructure-as-Code (IaC) Routes
+# ==============================================================================
+# Drop this file into your configured CONFIG_FILE or CONFIG_DIR (e.g. /etc/npm/routes.yaml)
+# to define static, non-containerized, or external services alongside Docker discovery.
+
+version: "1.0"
+
+proxy_hosts:
+  # ----------------------------------------------------------------------------
+  # 1. External Bare-Metal / Dedicated Server (e.g., GitLab or Proxmox)
+  # ----------------------------------------------------------------------------
+  - domain_names:
+      - gitlab.company.internal
+      - git.company.internal
+    forward_scheme: http
+    forward_host: 192.168.1.150
+    forward_port: 8080
+    ssl_enabled: true
+    ssl_forced: true
+    certificate_id: "new" # or numeric ID of an existing certificate in NPM
+    allow_websocket_upgrade: true
+    block_exploits: true
+    advanced_config: |
+      client_max_body_size 250M;
+
+  # ----------------------------------------------------------------------------
+  # 2. Local NAS Storage Web Interface (e.g., TrueNAS / Synology)
+  # ----------------------------------------------------------------------------
+  - domain_names:
+      - nas.home.arpa
+    forward_scheme: https
+    forward_host: 192.168.1.200
+    forward_port: 443
+    ssl_enabled: true
+    ssl_forced: true
+    allow_websocket_upgrade: true
+
+  # ----------------------------------------------------------------------------
+  # 3. Home Assistant / Smart Home Hub (with WebSocket support)
+  # ----------------------------------------------------------------------------
+  - domain_names:
+      - home.local
+      - hass.home.arpa
+    forward_scheme: http
+    forward_host: 192.168.1.80
+    forward_port: 8123
+    allow_websocket_upgrade: true
+    block_exploits: true
+
+  # ----------------------------------------------------------------------------
+  # 4. Cloudflare Tunnel / External Cloud Endpoint
+  # ----------------------------------------------------------------------------
+  - domain_names:
+      - api-gateway.mycorp.com
+    forward_scheme: https
+    forward_host: backend-cluster.internal.cloud
+    forward_port: 443
+    ssl_enabled: true
+    ssl_forced: true
+    http2_support: true
+    caching_enabled: false
