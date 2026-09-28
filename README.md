@@ -263,6 +263,7 @@ services:
       - .env
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./data:/data
     networks:
       - npm-network
 
@@ -315,6 +316,7 @@ services:
       - .env
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./data:/data
     networks:
       - npm-network
 

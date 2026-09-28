@@ -27,19 +27,24 @@ FROM alpine:3.20
 # Install runtime dependencies (certificates for HTTPS, tzdata for timezones)
 RUN apk add --no-cache ca-certificates tzdata
 
-# Create application directory
+# Create persistent data and application directories
+RUN mkdir -p /data /app
 WORKDIR /app
 
 # Copy binary from builder stage
 COPY --from=builder /build/npm-autodiscovery /app/npm-autodiscovery
 
 # Environment defaults
-ENV PORT=8080 \
+ENV DATA_DIR=/data \
+    PORT=8080 \
     POLL_INTERVAL=30s \
     DOCKER_SOCKET=/var/run/docker.sock \
     DEFAULT_FORWARD_SCHEME=http \
     DEFAULT_SSL_ENABLED=false \
     FORWARD_HOST_STRATEGY=auto
+
+# Persistent volume for Proxmox endpoints, cluster configurations, and node identity
+VOLUME ["/data"]
 
 # Expose web dashboard & API port
 EXPOSE 8080

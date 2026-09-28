@@ -209,6 +209,10 @@ func (r *ClusterRegistry) SetNodePVEConfig(nodeID string, cfg PVEConfig) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	if nodeID == "" {
+		nodeID = "controller-main"
+	}
+
 	if cfg.ID == "" {
 		if len(r.pveConfigs[nodeID]) > 0 {
 			cfg.ID = r.pveConfigs[nodeID][0].ID
@@ -230,8 +234,12 @@ func (r *ClusterRegistry) SetNodePVEConfig(nodeID string, cfg PVEConfig) {
 	}
 
 	// If secret was not provided in update, keep existing secret
-	if cfg.TokenSecret == "" && found != nil && found.TokenSecret != "" {
-		cfg.TokenSecret = found.TokenSecret
+	if cfg.TokenSecret == "" {
+		if found != nil && found.TokenSecret != "" {
+			cfg.TokenSecret = found.TokenSecret
+		} else if len(existingList) == 1 && existingList[0].TokenSecret != "" {
+			cfg.TokenSecret = existingList[0].TokenSecret
+		}
 	}
 	cfg.HasSecret = cfg.TokenSecret != ""
 
@@ -250,6 +258,10 @@ func (r *ClusterRegistry) SetNodePVEConfig(nodeID string, cfg PVEConfig) {
 func (r *ClusterRegistry) DeleteNodePVEConfig(nodeID string, configID string) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+
+	if nodeID == "" {
+		nodeID = "controller-main"
+	}
 
 	existingList, ok := r.pveConfigs[nodeID]
 	if !ok || len(existingList) == 0 {
@@ -279,10 +291,18 @@ func (r *ClusterRegistry) SetNodePVEConfigs(nodeID string, cfgs []PVEConfig) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	if nodeID == "" {
+		nodeID = "controller-main"
+	}
+
 	existingMap := make(map[string]*PVEConfig)
+	var firstExistingSecret string
 	for _, c := range r.pveConfigs[nodeID] {
 		if c.ID != "" {
 			existingMap[c.ID] = c
+		}
+		if firstExistingSecret == "" && c.TokenSecret != "" {
+			firstExistingSecret = c.TokenSecret
 		}
 	}
 
@@ -295,6 +315,8 @@ func (r *ClusterRegistry) SetNodePVEConfigs(nodeID string, cfgs []PVEConfig) {
 		if cp.TokenSecret == "" {
 			if existing, ok := existingMap[cp.ID]; ok && existing.TokenSecret != "" {
 				cp.TokenSecret = existing.TokenSecret
+			} else if len(cfgs) == 1 && firstExistingSecret != "" {
+				cp.TokenSecret = firstExistingSecret
 			}
 		}
 		cp.HasSecret = cp.TokenSecret != ""
@@ -356,16 +378,7 @@ func (r *ClusterRegistry) updateNodeInfoPVELocked(nodeID string) {
 	}
 }
 
-// GetNodePVEConfigs retrieves all configured Proxmox settings for a node.
-func (r *ClusterRegistry) GetNodePVEConfigs(nodeID string) []PVEConfig {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	cfgs, ok := r.pveConfigs[nodeID]
-	if !ok || len(cfgs) == 0 {
-		return nil
-	}
-
+func copyPVEConfigs(cfgs []*PVEConfig) []PVEConfig {
 	result := make([]PVEConfig, len(cfgs))
 	for i, c := range cfgs {
 		cp := *c
@@ -375,41 +388,87 @@ func (r *ClusterRegistry) GetNodePVEConfigs(nodeID string) []PVEConfig {
 	return result
 }
 
-// GetNodePVEConfig retrieves the primary configured Proxmox settings for a node.
-func (r *ClusterRegistry) GetNodePVEConfig(nodeID string) *PVEConfig {
+// GetNodePVEConfigs retrieves all configured Proxmox settings for a node.
+// It supports exact match, case-insensitive match, common aliases (local, controller-main),
+// and single-node fallback if only one node configuration is persisted.
+func (r *ClusterRegistry) GetNodePVEConfigs(nodeID string) []PVEConfig {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
+	// 1. Exact match
 	if cfgs, ok := r.pveConfigs[nodeID]; ok && len(cfgs) > 0 {
-		for _, c := range cfgs {
-			if c.Enabled {
-				cp := *c
-				cp.HasSecret = cp.TokenSecret != ""
-				return &cp
+		return copyPVEConfigs(cfgs)
+	}
+
+	// 2. Case-insensitive match
+	for k, cfgs := range r.pveConfigs {
+		if strings.EqualFold(k, nodeID) && len(cfgs) > 0 {
+			return copyPVEConfigs(cfgs)
+		}
+	}
+
+	// 3. Common controller / local aliases
+	isLocalAlias := nodeID == "" || strings.EqualFold(nodeID, "local") || strings.EqualFold(nodeID, "controller-main")
+	if isLocalAlias {
+		for _, alias := range []string{"controller-main", "local", ""} {
+			if cfgs, ok := r.pveConfigs[alias]; ok && len(cfgs) > 0 {
+				return copyPVEConfigs(cfgs)
 			}
 		}
-		cp := *cfgs[0]
-		cp.HasSecret = cp.TokenSecret != ""
-		return &cp
 	}
+
+	// 4. Single-node fallback: If there is exactly one configured node in the registry,
+	// return it for local queries or general fallback so upgrades never clear configs.
+	if len(r.pveConfigs) == 1 {
+		for _, cfgs := range r.pveConfigs {
+			if len(cfgs) > 0 {
+				return copyPVEConfigs(cfgs)
+			}
+		}
+	}
+
 	return nil
+}
+
+// GetNodePVEConfig retrieves the primary configured Proxmox settings for a node.
+func (r *ClusterRegistry) GetNodePVEConfig(nodeID string) *PVEConfig {
+	cfgs := r.GetNodePVEConfigs(nodeID)
+	if len(cfgs) == 0 {
+		return nil
+	}
+	for _, c := range cfgs {
+		if c.Enabled {
+			cp := c
+			return &cp
+		}
+	}
+	cp := cfgs[0]
+	return &cp
 }
 
 // GetNodePVEConfigByID retrieves a specific Proxmox config by ID.
 func (r *ClusterRegistry) GetNodePVEConfigByID(nodeID string, configID string) *PVEConfig {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	if cfgs, ok := r.pveConfigs[nodeID]; ok {
-		for _, c := range cfgs {
-			if c.ID == configID || (configID == "default" && (c.ID == "default" || c.ID == "")) {
-				cp := *c
-				cp.HasSecret = cp.TokenSecret != ""
-				return &cp
-			}
+	cfgs := r.GetNodePVEConfigs(nodeID)
+	for _, c := range cfgs {
+		if c.ID == configID || (configID == "default" && (c.ID == "default" || c.ID == "")) {
+			cp := c
+			return &cp
 		}
 	}
 	return nil
+}
+
+// GetAllStoredNodeIDs returns all node IDs that have stored Proxmox configurations.
+func (r *ClusterRegistry) GetAllStoredNodeIDs() []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	ids := make([]string, 0, len(r.pveConfigs))
+	for k := range r.pveConfigs {
+		ids = append(ids, k)
+	}
+	sort.Strings(ids)
+	return ids
 }
 
 // GetAllNodePVEConfigs returns all stored node PVE configs (primary per node).
@@ -441,23 +500,71 @@ func (r *ClusterRegistry) savePersistedPVEConfigsLocked() {
 	}
 	data, err := json.MarshalIndent(r.pveConfigs, "", "  ")
 	if err != nil {
+		log.Printf("[cluster] ERROR: Failed to serialize Proxmox configurations: %v", err)
 		return
 	}
-	_ = os.WriteFile(r.configPath, data, 0600)
+
+	dir := filepath.Dir(r.configPath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		log.Printf("[cluster] ERROR: Failed to create persistence directory %s: %v", dir, err)
+	}
+
+	// Atomic write using temporary file to prevent corruption on abrupt restart
+	tmpPath := fmt.Sprintf("%s.tmp.%d", r.configPath, time.Now().UnixNano())
+	if err := os.WriteFile(tmpPath, data, 0600); err != nil {
+		log.Printf("[cluster] ERROR: Failed to write temporary config %s: %v", tmpPath, err)
+		_ = os.WriteFile(r.configPath, data, 0600)
+	} else {
+		if err := os.Rename(tmpPath, r.configPath); err != nil {
+			log.Printf("[cluster] ERROR: Failed to rename %s to %s: %v", tmpPath, r.configPath, err)
+			_ = os.WriteFile(r.configPath, data, 0600)
+			_ = os.Remove(tmpPath)
+		}
+	}
+
+	log.Printf("[cluster] Persisted Proxmox configurations for %d node(s) to %s", len(r.pveConfigs), r.configPath)
 }
 
 func (r *ClusterRegistry) loadPersistedPVEConfigs() {
-	if r.configPath == "" {
-		return
+	var loadedData []byte
+	var loadedFrom string
+
+	// 1. Check primary config path first
+	if r.configPath != "" {
+		if data, err := os.ReadFile(r.configPath); err == nil && len(data) > 0 {
+			loadedData = data
+			loadedFrom = r.configPath
+		}
 	}
-	data, err := os.ReadFile(r.configPath)
-	if err != nil {
+
+	// 2. Only if primary doesn't exist and DATA_DIR was not explicitly set, search legacy fallback paths
+	if len(loadedData) == 0 && os.Getenv("DATA_DIR") == "" {
+		candidatePaths := []string{
+			"/data/cluster_pve_configs.json",
+			"data/cluster_pve_configs.json",
+			".cluster_pve_configs.json",
+			"/app/.cluster_pve_configs.json",
+			"/app/data/cluster_pve_configs.json",
+		}
+		for _, p := range candidatePaths {
+			if p == r.configPath {
+				continue
+			}
+			if data, err := os.ReadFile(p); err == nil && len(data) > 0 {
+				loadedData = data
+				loadedFrom = p
+				break
+			}
+		}
+	}
+
+	if len(loadedData) == 0 {
 		return
 	}
 
 	// 1. Try modern multi-config format map[string][]*PVEConfig
 	var multiLoaded map[string][]*PVEConfig
-	if err := json.Unmarshal(data, &multiLoaded); err == nil && len(multiLoaded) > 0 {
+	if err := json.Unmarshal(loadedData, &multiLoaded); err == nil && len(multiLoaded) > 0 {
 		for k, list := range multiLoaded {
 			var valid []*PVEConfig
 			for _, v := range list {
@@ -471,12 +578,17 @@ func (r *ClusterRegistry) loadPersistedPVEConfigs() {
 			}
 			r.pveConfigs[k] = valid
 		}
+		log.Printf("[cluster] Loaded Proxmox configurations for %d node(s) from %s", len(r.pveConfigs), loadedFrom)
+		// If loaded from a fallback path, migrate into primary config path immediately
+		if r.configPath != "" && loadedFrom != r.configPath {
+			r.savePersistedPVEConfigsLocked()
+		}
 		return
 	}
 
 	// 2. Fallback to legacy single-config format map[string]*PVEConfig
 	var singleLoaded map[string]*PVEConfig
-	if err := json.Unmarshal(data, &singleLoaded); err == nil {
+	if err := json.Unmarshal(loadedData, &singleLoaded); err == nil {
 		for k, v := range singleLoaded {
 			if v != nil {
 				v.HasSecret = v.TokenSecret != ""
@@ -485,6 +597,10 @@ func (r *ClusterRegistry) loadPersistedPVEConfigs() {
 				}
 				r.pveConfigs[k] = []*PVEConfig{v}
 			}
+		}
+		log.Printf("[cluster] Migrated legacy Proxmox configurations for %d node(s) from %s", len(r.pveConfigs), loadedFrom)
+		if r.configPath != "" {
+			r.savePersistedPVEConfigsLocked()
 		}
 	}
 }
@@ -500,7 +616,14 @@ func resolveClusterConfigPath() string {
 	if fi, err := os.Stat("data"); err == nil && fi.IsDir() {
 		return "data/cluster_pve_configs.json"
 	}
-	return ".cluster_pve_configs.json"
+	if _, err := os.Stat("/app"); err == nil {
+		_ = os.MkdirAll("/data", 0755)
+		if fi, err := os.Stat("/data"); err == nil && fi.IsDir() {
+			return "/data/cluster_pve_configs.json"
+		}
+	}
+	_ = os.MkdirAll("data", 0755)
+	return "data/cluster_pve_configs.json"
 }
 
 // GetNodes returns all cluster nodes: local controller first, then remote workers sorted by ID.
@@ -820,8 +943,14 @@ func (s *Syncer) sendWorkerReport(ctx context.Context) {
 	if err := json.NewDecoder(resp.Body).Decode(&pushResp); err == nil {
 		if len(pushResp.PVEConfigs) > 0 {
 			_ = s.ApplyDynamicPVEConfigs(pushResp.PVEConfigs)
+			if s.clusterRegistry != nil {
+				s.clusterRegistry.SetNodePVEConfigs(s.cfg.HostID, pushResp.PVEConfigs)
+			}
 		} else if pushResp.PVEConfig != nil {
 			_ = s.ApplyDynamicPVEConfig(*pushResp.PVEConfig)
+			if s.clusterRegistry != nil {
+				s.clusterRegistry.SetNodePVEConfig(s.cfg.HostID, *pushResp.PVEConfig)
+			}
 		}
 	}
 }

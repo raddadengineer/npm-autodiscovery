@@ -270,10 +270,12 @@ func (s *Syncer) Start(ctx context.Context) {
 		if localID == "" {
 			localID = "controller-main"
 		}
-		if pveCfgs := s.clusterRegistry.GetNodePVEConfigs(localID); len(pveCfgs) > 0 {
+		if pveCfgs := s.GetNodePVEConfigs(localID); len(pveCfgs) > 0 {
 			_ = s.ApplyDynamicPVEConfigs(pveCfgs)
-		} else if pveCfg := s.clusterRegistry.GetNodePVEConfig(localID); pveCfg != nil && pveCfg.Enabled {
+			s.EmitLog(LevelInfo, "pve", fmt.Sprintf("Restored %d Proxmox VE endpoint(s) from persistent configuration", len(pveCfgs)), "")
+		} else if pveCfg := s.GetNodePVEConfig(localID); pveCfg != nil && pveCfg.Enabled {
 			_ = s.ApplyDynamicPVEConfig(*pveCfg)
+			s.EmitLog(LevelInfo, "pve", "Restored Proxmox VE configuration from persistent configuration", pveCfg.URL)
 		}
 	}
 
@@ -2967,6 +2969,21 @@ func (s *Syncer) GetNodePVEConfigs(nodeID string) []PVEConfig {
 		if s.clusterRegistry != nil {
 			if cfgs := s.clusterRegistry.GetNodePVEConfigs(localID); len(cfgs) > 0 {
 				return cfgs
+			}
+			if !strings.EqualFold(localID, "controller-main") {
+				if cfgs := s.clusterRegistry.GetNodePVEConfigs("controller-main"); len(cfgs) > 0 {
+					return cfgs
+				}
+			}
+			if !strings.EqualFold(localID, "local") {
+				if cfgs := s.clusterRegistry.GetNodePVEConfigs("local"); len(cfgs) > 0 {
+					return cfgs
+				}
+			}
+			if all := s.clusterRegistry.GetAllStoredNodeIDs(); len(all) == 1 {
+				if cfgs := s.clusterRegistry.GetNodePVEConfigs(all[0]); len(cfgs) > 0 {
+					return cfgs
+				}
 			}
 		}
 

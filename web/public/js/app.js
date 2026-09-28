@@ -2339,6 +2339,7 @@ function generateAgentConfig(notify = true) {
   --name npm-autodiscovery-worker \\
   --restart unless-stopped \\
   -v /var/run/docker.sock:/var/run/docker.sock:ro \\
+  -v ./data:/data \\
   -e NPM_URL="${npmUrl}" \\
   -e NPM_USER="${npmUser}" \\
   -e NPM_PASS="${npmPass}" \\
@@ -2379,7 +2380,9 @@ function generateAgentConfig(notify = true) {
       - .env
     volumes:
       # Read-only Docker socket mapping allows listening to local container events
-      - /var/run/docker.sock:/var/run/docker.sock:ro${pveComposeBlock}`;
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Persistent configuration & Proxmox discovery endpoints
+      - ./data:/data${pveComposeBlock}`;
 
   let pveEnvBlock = '';
   if (pveEnabled && pveUrl) {
@@ -2677,7 +2680,9 @@ function openProxmoxModal(nodeId) {
           has_secret: !!data.has_secret
         }];
       } else {
-        nodeProxmoxConfigs = [];
+        if (nodeProxmoxConfigs.length === 0) {
+          nodeProxmoxConfigs = [];
+        }
       }
 
       renderPveEndpointPills();

@@ -17,6 +17,8 @@ services:
     volumes:
       # Read-only Docker socket mapping allows listening to local container events
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Persistent configuration & Proxmox discovery endpoints
+      - ./data:/data
 
   # ============================================================================
   # Example Target Service on Worker Node

@@ -28,7 +28,7 @@
           </div>
           <div class="brand-text">
             <h1>NPM Auto-Discovery</h1>
-            <span class="badge version-badge">v2.0.4</span>
+            <span class="badge version-badge">v2.0.5</span>
           </div>
         </div>
 
@@ -1372,6 +1372,7 @@ services:
       - .env
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./data:/data
     networks:
       - npm-network
 
@@ -1607,7 +1608,8 @@ services:
     env_file:
       - .env
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro</code></pre>
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./data:/data</code></pre>
               </div>
 
               <button class="btn btn-secondary btn-sm" onclick="copyDocsGuideCode('standalone-guide', 'Standalone agent template copied to clipboard!')">
@@ -1633,6 +1635,7 @@ services:
       - .env
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./data:/data
 
   worker-whoami:
     image: 'raddadengineer/whoami:latest'

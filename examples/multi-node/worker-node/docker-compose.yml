@@ -10,6 +10,7 @@ services:
       - .env
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./data:/data
 
   # Example service on this worker node
   demo-service:

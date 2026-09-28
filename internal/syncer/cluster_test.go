@@ -201,3 +201,73 @@ func TestSyncer_ClusterIntegration(t *testing.T) {
 		t.Errorf("unexpected worker node: %+v", nodes[1])
 	}
 }
+
+func TestClusterRegistry_PersistenceAndUpgradeResilience(t *testing.T) {
+	tempDir := t.TempDir()
+	t.Setenv("DATA_DIR", tempDir)
+
+	reg1 := NewClusterRegistry()
+
+	// 1. Save config under "worker-node-01"
+	reg1.SetNodePVEConfig("worker-node-01", PVEConfig{
+		ID:          "pve-1",
+		Name:        "Proxmox Production",
+		Enabled:     true,
+		URL:         "https://pve.example.com:8006",
+		TokenID:     "root@pam!token",
+		TokenSecret: "super-secret-token",
+		Node:        "pve-node-1",
+	})
+
+	// Verify it saved
+	cfgs := reg1.GetNodePVEConfigs("worker-node-01")
+	if len(cfgs) != 1 || cfgs[0].TokenSecret != "super-secret-token" {
+		t.Fatalf("expected 1 config with secret, got %+v", cfgs)
+	}
+
+	// 2. Simulate upgrade: create a brand new registry instance pointing to the same DATA_DIR
+	reg2 := NewClusterRegistry()
+
+	// Verify exact match
+	cfgs2 := reg2.GetNodePVEConfigs("worker-node-01")
+	if len(cfgs2) != 1 || cfgs2[0].TokenSecret != "super-secret-token" {
+		t.Fatalf("expected config to survive reload, got %+v", cfgs2)
+	}
+
+	// Verify case-insensitive match
+	cfgsCase := reg2.GetNodePVEConfigs("WORKER-NODE-01")
+	if len(cfgsCase) != 1 || cfgsCase[0].ID != "pve-1" {
+		t.Fatalf("expected case-insensitive match, got %+v", cfgsCase)
+	}
+
+	// Verify single-node fallback: if querying for "controller-main" or "local", it falls back to the 1 saved node config
+	cfgsFallback := reg2.GetNodePVEConfigs("controller-main")
+	if len(cfgsFallback) != 1 || cfgsFallback[0].ID != "pve-1" {
+		t.Fatalf("expected single-node fallback to return saved config, got %+v", cfgsFallback)
+	}
+
+	// 3. Test secret preservation: UI updates endpoint name/URL without re-sending secret
+	reg2.SetNodePVEConfig("worker-node-01", PVEConfig{
+		ID:      "pve-1",
+		Name:    "Proxmox Production Renamed",
+		Enabled: true,
+		URL:     "https://pve-renamed.example.com:8006",
+		TokenID: "root@pam!token",
+		// TokenSecret intentionally empty (as submitted by dashboard UI)
+	})
+
+	cfgsUpdated := reg2.GetNodePVEConfigs("worker-node-01")
+	if len(cfgsUpdated) != 1 {
+		t.Fatalf("expected 1 config, got %d", len(cfgsUpdated))
+	}
+	if cfgsUpdated[0].TokenSecret != "super-secret-token" {
+		t.Errorf("expected TokenSecret to be preserved, got '%s'", cfgsUpdated[0].TokenSecret)
+	}
+	if !cfgsUpdated[0].HasSecret {
+		t.Errorf("expected HasSecret to be true")
+	}
+	if cfgsUpdated[0].Name != "Proxmox Production Renamed" {
+		t.Errorf("expected updated name, got '%s'", cfgsUpdated[0].Name)
+	}
+}
+

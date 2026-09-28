@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -135,7 +136,33 @@ func LoadFromEnv() (*Config, error) {
 	if hostname == "" {
 		hostname = "default-node"
 	}
-	hostID := getEnv("HOST_ID", getEnv("NODE_ID", hostname))
+	mainNodeURL := getEnv("MAIN_NODE_URL", "")
+
+	// Stabilize Node ID across container recreations/upgrades:
+	// 1. Explicit HOST_ID or NODE_ID env var
+	// 2. Persisted node ID file (/data/node_id or data/node_id)
+	// 3. Central controller default ("controller-main") if MAIN_NODE_URL is empty
+	// 4. Fallback to system/container hostname for worker nodes
+	defaultHostID := "controller-main"
+	for _, p := range []string{"/data/node_id", "data/node_id"} {
+		if b, err := os.ReadFile(p); err == nil && len(strings.TrimSpace(string(b))) > 0 {
+			defaultHostID = strings.TrimSpace(string(b))
+			break
+		}
+	}
+	if defaultHostID == "controller-main" && mainNodeURL != "" {
+		defaultHostID = hostname
+	}
+
+	hostID := getEnv("HOST_ID", getEnv("NODE_ID", defaultHostID))
+	// Persist resolved hostID so node identity remains constant across container recreations
+	for _, p := range []string{"/data", "data"} {
+		if fi, err := os.Stat(p); err == nil && fi.IsDir() {
+			_ = os.WriteFile(filepath.Join(p, "node_id"), []byte(hostID), 0644)
+			break
+		}
+	}
+
 	hostIP := getEnv("HOST_IP", getEnv("NODE_IP", ""))
 	useHostPort := getEnvBool("USE_HOST_PORT", hostIP != "")
 
@@ -182,7 +209,7 @@ func LoadFromEnv() (*Config, error) {
 	}
 
 	dashboardEnabled := getEnvBool("DASHBOARD_ENABLED", getEnvBool("ENABLE_DASHBOARD", getEnvBool("SERVER_ENABLED", true)))
-	mainNodeURL := strings.TrimRight(getEnv("MAIN_NODE_URL", getEnv("CLUSTER_CONTROLLER_URL", "")), "/")
+	mainNodeURL = strings.TrimRight(getEnv("MAIN_NODE_URL", getEnv("CLUSTER_CONTROLLER_URL", "")), "/")
 	clusterToken := getEnv("CLUSTER_TOKEN", getEnv("NODE_AUTH_TOKEN", ""))
 	pushIntervalStr := getEnv("PUSH_INTERVAL", getEnv("CLUSTER_PUSH_INTERVAL", "15s"))
 	pushInterval, err := time.ParseDuration(pushIntervalStr)
