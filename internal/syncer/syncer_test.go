@@ -87,7 +87,7 @@ func TestIsUpdateRequired(t *testing.T) {
 		ForwardPort:   8080,
 		ForwardScheme: "http",
 		CertificateID: 0,
-		AccessListID:  "0",
+		AccessListID:  0,
 	}
 
 	// 1. Equal
@@ -119,7 +119,7 @@ func TestIsUpdateRequired(t *testing.T) {
 	}
 
 	// 4. AccessListID change
-	desired.AccessListID = "5"
+	desired.AccessListID = 5
 	req, reason = isUpdateRequired(existing, desired)
 	if !req {
 		t.Errorf("Expected update required for access list ID change")

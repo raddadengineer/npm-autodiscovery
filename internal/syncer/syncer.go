@@ -758,7 +758,7 @@ func (s *Syncer) reconcileProxyInNPM(ctx context.Context, inspect *docker.Contai
 		HTTP2Support:          proxyCfg.HTTP2Support,
 		AdvancedConfig:        advConfig,
 		Locations:             npmLocations,
-		AccessListID:          proxyCfg.AccessListID,
+		AccessListID:          npm.ParseAccessListID(proxyCfg.AccessListID),
 		Meta: map[string]interface{}{
 			"managed_by":        ManagedByTag,
 			"host_id":           s.cfg.HostID,
@@ -1576,7 +1576,7 @@ func (s *Syncer) reconcileIaCHost(ctx context.Context, sh iac.StaticProxyHost) {
 		HTTP2Support:          sh.HTTP2Support,
 		AdvancedConfig:        advConfig,
 		Locations:             npmLocations,
-		AccessListID:          sh.AccessListID,
+		AccessListID:          npm.ParseAccessListID(sh.AccessListID),
 		Meta: map[string]interface{}{
 			"managed_by":  ManagedByTag,
 			"source":      "iac",
@@ -1720,7 +1720,7 @@ func (s *Syncer) reconcilePVERoute(ctx context.Context, route pve.PVERoute) {
 		HTTP2Support:          route.HTTP2Support,
 		AdvancedConfig:        advConfig,
 		Locations:             npmLocations,
-		AccessListID:          route.AccessListID,
+		AccessListID:          npm.ParseAccessListID(route.AccessListID),
 		Meta: map[string]interface{}{
 			"managed_by":        ManagedByTag,
 			"host_id":           s.cfg.HostID,
@@ -1865,7 +1865,7 @@ func (s *Syncer) reconcileLXDRoute(ctx context.Context, route lxd.LXDRoute) {
 		HTTP2Support:          route.HTTP2Support,
 		AdvancedConfig:        advConfig,
 		Locations:             npmLocations,
-		AccessListID:          route.AccessListID,
+		AccessListID:          npm.ParseAccessListID(route.AccessListID),
 		Meta: map[string]interface{}{
 			"managed_by":        ManagedByTag,
 			"host_id":           s.cfg.HostID,

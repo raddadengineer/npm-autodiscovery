@@ -32,7 +32,7 @@ type StaticProxyHost struct {
 	AdvancedConfig        string             `json:"advanced_config,omitempty" yaml:"advanced_config,omitempty"`
 	Locations             []StaticLocation   `json:"locations,omitempty" yaml:"locations,omitempty"`
 	Middlewares           *middleware.Config `json:"middlewares,omitempty" yaml:"middlewares,omitempty"`
-	AccessListID          string             `json:"access_list_id,omitempty" yaml:"access_list_id,omitempty"`
+	AccessListID          interface{}        `json:"access_list_id,omitempty" yaml:"access_list_id,omitempty"`
 	Enabled               *bool              `json:"enabled,omitempty" yaml:"enabled,omitempty"`
 	SourceFile            string             `json:"source_file,omitempty" yaml:"-"`
 }

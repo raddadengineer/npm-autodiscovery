@@ -81,8 +81,66 @@ type ProxyHostRequest struct {
 	HTTP2Support          bool                   `json:"http2_support"`
 	AdvancedConfig        string                 `json:"advanced_config"`
 	Locations             []ProxyHostLocation    `json:"locations,omitempty"`
-	AccessListID          string                 `json:"access_list_id"`
+	AccessListID          int                    `json:"access_list_id"`
 	Meta                  map[string]interface{} `json:"meta"`
+}
+
+// ParseAccessListID safely converts strings, numbers, or empty interface values
+// into the integer required by the Nginx Proxy Manager REST API schema.
+// Defaults to 0 (no access list / publicly accessible).
+func ParseAccessListID(v interface{}) int {
+	if v == nil {
+		return 0
+	}
+	switch val := v.(type) {
+	case int:
+		if val < 0 {
+			return 0
+		}
+		return val
+	case int64:
+		if val < 0 {
+			return 0
+		}
+		return int(val)
+	case float64:
+		if val < 0 {
+			return 0
+		}
+		return int(val)
+	case string:
+		s := ""
+		for _, r := range val {
+			if r != ' ' && r != '\t' && r != '\r' && r != '\n' {
+				s += string(r)
+			}
+		}
+		if s == "" || s == "0" || s == "none" || s == "public" {
+			return 0
+		}
+		var parsed int
+		var factor = 1
+		var valid = true
+		for i, r := range s {
+			if i == 0 && r == '-' {
+				valid = false
+				break
+			}
+			if r >= '0' && r <= '9' {
+				parsed = parsed*10 + int(r-'0')
+			} else {
+				valid = false
+				break
+			}
+		}
+		_ = factor
+		if valid {
+			return parsed
+		}
+		return 0
+	default:
+		return 0
+	}
 }
 
 // Stream represents an existing Layer 4 TCP/UDP stream record in Nginx Proxy Manager.
