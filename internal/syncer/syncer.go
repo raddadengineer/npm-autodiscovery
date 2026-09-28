@@ -2337,6 +2337,10 @@ func (s *Syncer) GetStatusOverview(ctx context.Context) StatusOverview {
 // getLocalContainersView lists all running containers on this local host (Docker, Proxmox LXC, LXD/Incus).
 func (s *Syncer) getLocalContainersView(ctx context.Context) ([]ContainerStatusView, error) {
 	views := make([]ContainerStatusView, 0)
+	localID := s.cfg.HostID
+	if localID == "" {
+		localID = "controller-main"
+	}
 
 	// 1. Docker Containers
 	if s.dockerClient != nil {
@@ -2360,7 +2364,7 @@ func (s *Syncer) getLocalContainersView(ctx context.Context) ([]ContainerStatusV
 						Discovered:    false,
 						IgnoredReason: "Failed to inspect container",
 						Labels:        c.Labels,
-						NodeID:        s.cfg.HostID,
+						NodeID:        localID,
 					})
 					continue
 				}
@@ -2460,7 +2464,7 @@ func (s *Syncer) getLocalContainersView(ctx context.Context) ([]ContainerStatusV
 					Domains:       domains,
 					Port:          port,
 					Labels:        c.Labels,
-					NodeID:        s.cfg.HostID,
+					NodeID:        localID,
 				})
 			}
 		}
@@ -2476,6 +2480,15 @@ func (s *Syncer) getLocalContainersView(ctx context.Context) ([]ContainerStatusV
 
 	for _, pc := range pveSnapshot {
 		tagsMeta := pve.ParsePVETags(pc.Tags)
+		if pc.Notes != "" {
+			notesMeta := pve.ParsePVENotes(pc.Notes)
+			for k, v := range notesMeta {
+				if _, exists := tagsMeta[k]; !exists {
+					tagsMeta[k] = v
+				}
+			}
+		}
+
 		discovered := false
 		var domains []string
 		port := 80
@@ -2499,20 +2512,38 @@ func (s *Syncer) getLocalContainersView(ctx context.Context) ([]ContainerStatusV
 			pveID = fmt.Sprintf("pve:%s:%d", pc.Node, pc.VMID)
 		}
 
+		pveType := strings.ToLower(pc.Type)
+		if pveType == "" {
+			pveType = "lxc"
+		}
+
+		displayName := pc.Name
+		if displayName == "" {
+			displayName = fmt.Sprintf("VM %d", pc.VMID)
+		}
+		if pc.Node != "" {
+			displayName = fmt.Sprintf("%s (%s)", displayName, pc.Node)
+		}
+
+		statusDetail := pc.Status
+		if pc.IP != "" {
+			statusDetail = fmt.Sprintf("%s • %s", pc.Status, pc.IP)
+		}
+
 		views = append(views, ContainerStatusView{
 			ID:            pveID,
-			Name:          fmt.Sprintf("%s (%s)", pc.Name, pc.Node),
-			Image:         "lxc",
+			Name:          displayName,
+			Image:         pveType,
 			Source:        "pve",
 			State:         pc.Status,
-			Status:        pc.Status,
+			Status:        statusDetail,
 			HealthStatus:  "none",
 			Discovered:    discovered,
 			IgnoredReason: ignored,
 			Domains:       domains,
 			Port:          port,
 			Labels:        tagsMeta,
-			NodeID:        s.cfg.HostID,
+			NodeID:        localID,
 		})
 	}
 
@@ -2555,7 +2586,7 @@ func (s *Syncer) getLocalContainersView(ctx context.Context) ([]ContainerStatusV
 			Domains:       domains,
 			Port:          port,
 			Labels:        tagsMeta,
-			NodeID:        s.cfg.HostID,
+			NodeID:        localID,
 		})
 	}
 

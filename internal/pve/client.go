@@ -219,8 +219,38 @@ func (c *Client) ListLXCContainers(ctx context.Context, node string) ([]LXCConta
 
 	for i := range containers {
 		containers[i].Node = node
+		if containers[i].Type == "" {
+			containers[i].Type = "lxc"
+		}
 	}
 	return containers, nil
+}
+
+// ListQemuVMs lists QEMU virtual machines on a specific node.
+func (c *Client) ListQemuVMs(ctx context.Context, node string) ([]LXCContainerSummary, error) {
+	endpoint := fmt.Sprintf("/api2/json/nodes/%s/qemu", node)
+	data, err := c.doRequest(ctx, http.MethodGet, endpoint)
+	if err != nil {
+		return nil, err
+	}
+
+	var res APIResponse
+	if err := json.Unmarshal(data, &res); err != nil {
+		return nil, err
+	}
+
+	var vms []LXCContainerSummary
+	if err := json.Unmarshal(res.Data, &vms); err != nil {
+		return nil, err
+	}
+
+	for i := range vms {
+		vms[i].Node = node
+		if vms[i].Type == "" {
+			vms[i].Type = "qemu"
+		}
+	}
+	return vms, nil
 }
 
 // GetLXCConfig retrieves the container configuration including Notes (description) and network config.
@@ -250,6 +280,32 @@ func (c *Client) GetLXCConfig(ctx context.Context, node string, vmid int) (*LXCC
 	return &cfg, nil
 }
 
+// GetQemuConfig retrieves the VM configuration including Notes (description) and network config.
+func (c *Client) GetQemuConfig(ctx context.Context, node string, vmid int) (*LXCConfig, error) {
+	endpoint := fmt.Sprintf("/api2/json/nodes/%s/qemu/%d/config", node, vmid)
+	data, err := c.doRequest(ctx, http.MethodGet, endpoint)
+	if err != nil {
+		return nil, err
+	}
+
+	var res APIResponse
+	if err := json.Unmarshal(data, &res); err != nil {
+		return nil, err
+	}
+
+	var cfg LXCConfig
+	if err := json.Unmarshal(res.Data, &cfg); err != nil {
+		return nil, err
+	}
+
+	var raw map[string]interface{}
+	if err := json.Unmarshal(res.Data, &raw); err == nil {
+		cfg.Raw = raw
+	}
+
+	return &cfg, nil
+}
+
 // GetLXCInterfaces queries active network interfaces for a container.
 func (c *Client) GetLXCInterfaces(ctx context.Context, node string, vmid int) ([]NetworkInterface, error) {
 	endpoint := fmt.Sprintf("/api2/json/nodes/%s/lxc/%d/interfaces", node, vmid)
@@ -271,11 +327,70 @@ func (c *Client) GetLXCInterfaces(ctx context.Context, node string, vmid int) ([
 	return ifaces, nil
 }
 
+// GetQemuInterfaces queries active network interfaces via QEMU Guest Agent.
+func (c *Client) GetQemuInterfaces(ctx context.Context, node string, vmid int) ([]NetworkInterface, error) {
+	endpoint := fmt.Sprintf("/api2/json/nodes/%s/qemu/%d/agent/network-get-interfaces", node, vmid)
+	data, err := c.doRequest(ctx, http.MethodGet, endpoint)
+	if err != nil {
+		return nil, err
+	}
+
+	var res APIResponse
+	if err := json.Unmarshal(data, &res); err != nil {
+		return nil, err
+	}
+
+	var agentRes struct {
+		Result []struct {
+			Name        string `json:"name"`
+			IPAddresses []struct {
+				IPAddress     string `json:"ip-address"`
+				IPAddressType string `json:"ip-address-type"`
+				Prefix        int    `json:"prefix"`
+			} `json:"ip-addresses"`
+		} `json:"result"`
+	}
+
+	if err := json.Unmarshal(res.Data, &agentRes); err != nil {
+		return nil, err
+	}
+
+	var ifaces []NetworkInterface
+	for _, r := range agentRes.Result {
+		for _, ipInfo := range r.IPAddresses {
+			if strings.EqualFold(ipInfo.IPAddressType, "ipv4") {
+				ifaces = append(ifaces, NetworkInterface{
+					Name: r.Name,
+					Inet: fmt.Sprintf("%s/%d", ipInfo.IPAddress, ipInfo.Prefix),
+				})
+			}
+		}
+	}
+
+	return ifaces, nil
+}
+
+// GetPermissions queries Proxmox VE permissions for current token/user.
+func (c *Client) GetPermissions(ctx context.Context) (map[string]interface{}, error) {
+	data, err := c.doRequest(ctx, http.MethodGet, "/api2/json/access/permissions")
+	if err != nil {
+		return nil, err
+	}
+
+	var res APIResponse
+	if err := json.Unmarshal(data, &res); err != nil {
+		return nil, err
+	}
+
+	var perms map[string]interface{}
+	if err := json.Unmarshal(res.Data, &perms); err != nil {
+		return nil, err
+	}
+
+	return perms, nil
+}
+
 // ResolveContainerIP resolves the container's IP address.
-// Precedence:
-// 1. Preferred interface from /interfaces
-// 2. Any other non-loopback interface matching allowed subnets
-// 3. Fallback to net0...net3 config in LXCConfig
 func (c *Client) ResolveContainerIP(ctx context.Context, node string, vmid int, cfg *LXCConfig) (string, string, error) {
 	// 1. Try querying active interfaces
 	ifaces, err := c.GetLXCInterfaces(ctx, node, vmid)
@@ -352,6 +467,95 @@ func (c *Client) ResolveContainerIP(ctx context.Context, node string, vmid int, 
 	return "", "", fmt.Errorf("no valid IPv4 address found for LXC %d on node %s", vmid, node)
 }
 
+// ResolveQemuIP resolves the IP address for a QEMU virtual machine.
+func (c *Client) ResolveQemuIP(ctx context.Context, node string, vmid int, cfg *LXCConfig) (string, string, error) {
+	// 1. Try querying active interfaces via QEMU Guest Agent
+	ifaces, err := c.GetQemuInterfaces(ctx, node, vmid)
+	if err == nil && len(ifaces) > 0 {
+		for _, iface := range ifaces {
+			if strings.EqualFold(iface.Name, c.preferredInterface) && iface.Inet != "" {
+				if cleanIP, ipObj, err := ExtractCleanIPv4(iface.Inet); err == nil {
+					if MatchSubnets(ipObj, c.allowedSubnets) {
+						return cleanIP, iface.Name, nil
+					}
+				}
+			}
+		}
+
+		for _, iface := range ifaces {
+			if strings.EqualFold(iface.Name, "lo") {
+				continue
+			}
+			if iface.Inet != "" {
+				if cleanIP, ipObj, err := ExtractCleanIPv4(iface.Inet); err == nil {
+					if MatchSubnets(ipObj, c.allowedSubnets) {
+						return cleanIP, iface.Name, nil
+					}
+				}
+			}
+		}
+	}
+
+	// 2. Fallback to Cloud-Init ipconfig0...ipconfig3
+	if cfg != nil && cfg.Raw != nil {
+		for i := 0; i < 4; i++ {
+			key := fmt.Sprintf("ipconfig%d", i)
+			if val, ok := cfg.Raw[key].(string); ok && val != "" {
+				// Format: ip=192.168.1.150/24,gw=192.168.1.1
+				for _, part := range strings.Split(val, ",") {
+					part = strings.TrimSpace(part)
+					if strings.HasPrefix(part, "ip=") {
+						rawIP := strings.TrimPrefix(part, "ip=")
+						if rawIP != "dhcp" && rawIP != "" {
+							if cleanIP, ipObj, err := ExtractCleanIPv4(rawIP); err == nil {
+								if MatchSubnets(ipObj, c.allowedSubnets) {
+									return cleanIP, fmt.Sprintf("ipconfig%d", i), nil
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return "", "", fmt.Errorf("no valid IPv4 address found for QEMU VM %d on node %s", vmid, node)
+}
+
+// ResolveInstanceIP resolves IP for either LXC container or QEMU VM.
+func (c *Client) ResolveInstanceIP(ctx context.Context, cont LXCContainerSummary, cfg *LXCConfig) (string, string, error) {
+	if strings.EqualFold(cont.Type, "qemu") {
+		return c.ResolveQemuIP(ctx, cont.Node, cont.VMID, cfg)
+	}
+	return c.ResolveContainerIP(ctx, cont.Node, cont.VMID, cfg)
+}
+
+// ListClusterContainers queries /api2/json/cluster/resources?type=vm for all LXC containers and QEMU VMs across the cluster.
+func (c *Client) ListClusterContainers(ctx context.Context) ([]LXCContainerSummary, error) {
+	data, err := c.doRequest(ctx, http.MethodGet, "/api2/json/cluster/resources?type=vm")
+	if err != nil {
+		return nil, err
+	}
+
+	var res APIResponse
+	if err := json.Unmarshal(data, &res); err != nil {
+		return nil, err
+	}
+
+	var allItems []LXCContainerSummary
+	if err := json.Unmarshal(res.Data, &allItems); err != nil {
+		return nil, err
+	}
+
+	var instances []LXCContainerSummary
+	for _, item := range allItems {
+		if strings.EqualFold(item.Type, "lxc") || strings.EqualFold(item.Type, "qemu") {
+			instances = append(instances, item)
+		}
+	}
+	return instances, nil
+}
+
 // DiscoverRoutes scans the configured node or all cluster nodes and discovers routes and streams.
 func (c *Client) DiscoverRoutes(
 	ctx context.Context,
@@ -369,78 +573,156 @@ func (c *Client) DiscoverRoutes(
 			}
 		}
 	}
-	if len(targetNodes) == 0 {
-		onlineNodes, err := c.GetNodes(ctx)
-		if err != nil {
-			return nil, nil, nil, fmt.Errorf("failed listing nodes: %w", err)
+
+	onlineNodes, _ := c.GetNodes(ctx)
+
+	// If targetNodes were configured, ensure at least one matches an online node.
+	// If none match (e.g. user entered "main" but actual cluster node is "nthms"),
+	// fall back to all online nodes rather than returning 0 items.
+	if len(targetNodes) > 0 && len(onlineNodes) > 0 {
+		hasMatch := false
+		for _, tn := range targetNodes {
+			for _, on := range onlineNodes {
+				if strings.EqualFold(tn, on) {
+					hasMatch = true
+					break
+				}
+			}
+			if hasMatch {
+				break
+			}
 		}
-		targetNodes = onlineNodes
+		if !hasMatch {
+			targetNodes = onlineNodes
+		}
 	}
 
 	var allRoutes []PVERoute
 	var allStreams []PVEStream
 	var allContainers []LXCContainerSummary
 
-	for _, nodeName := range targetNodes {
-		containers, err := c.ListLXCContainers(ctx, nodeName)
-		if err != nil {
+	// Map of container unique key (node:vmid) -> LXCContainerSummary
+	seenContainers := make(map[string]LXCContainerSummary)
+
+	// Strategy 1: Check cluster resources endpoint first (covers all nodes even without /nodes permission)
+	if clusterContainers, err := c.ListClusterContainers(ctx); err == nil && len(clusterContainers) > 0 {
+		for _, cont := range clusterContainers {
+			if len(targetNodes) > 0 {
+				match := false
+				for _, tn := range targetNodes {
+					if strings.EqualFold(cont.Node, tn) {
+						match = true
+						break
+					}
+				}
+				if !match {
+					continue
+				}
+			}
+			key := fmt.Sprintf("%s:%d", cont.Node, cont.VMID)
+			seenContainers[key] = cont
+		}
+	}
+
+	// Strategy 2: If no containers discovered via cluster resources, query node-by-node for LXCs and QEMU VMs
+	if len(seenContainers) == 0 {
+		nodesToQuery := targetNodes
+		if len(nodesToQuery) == 0 {
+			nodesToQuery = onlineNodes
+		}
+
+		for _, nodeName := range nodesToQuery {
+			// Query LXC
+			if containers, err := c.ListLXCContainers(ctx, nodeName); err == nil {
+				for _, cont := range containers {
+					key := fmt.Sprintf("%s:%d", cont.Node, cont.VMID)
+					seenContainers[key] = cont
+				}
+			}
+			// Query QEMU VMs
+			if vms, err := c.ListQemuVMs(ctx, nodeName); err == nil {
+				for _, vm := range vms {
+					key := fmt.Sprintf("%s:%d", vm.Node, vm.VMID)
+					seenContainers[key] = vm
+				}
+			}
+		}
+	}
+
+	// Process all collected containers and VMs
+	for _, cont := range seenContainers {
+		nodeName := cont.Node
+
+		// Only process running instances for route configuration
+		if !strings.EqualFold(cont.Status, "running") {
+			allContainers = append(allContainers, cont)
 			continue
 		}
 
-		for _, cont := range containers {
-			allContainers = append(allContainers, cont)
+		// Get instance configuration (for Notes and net fallback)
+		var cfg *LXCConfig
+		if strings.EqualFold(cont.Type, "qemu") {
+			cfg, _ = c.GetQemuConfig(ctx, nodeName, cont.VMID)
+		} else {
+			cfg, _ = c.GetLXCConfig(ctx, nodeName, cont.VMID)
+		}
 
-			// Only process running containers
-			if !strings.EqualFold(cont.Status, "running") {
-				continue
+		if cfg != nil {
+			if cont.Tags == "" {
+				cont.Tags = cfg.Tags
 			}
+			cont.Notes = cfg.Description
+		}
 
-			// Get container configuration (for Notes and net fallback)
-			cfg, err := c.GetLXCConfig(ctx, nodeName, cont.VMID)
-			if err != nil {
-				continue
-			}
+		// Resolve IP (via Guest Agent, Cloud-Init, or interfaces)
+		ip, iface, _ := c.ResolveInstanceIP(ctx, cont, cfg)
+		if ip != "" {
+			cont.IP = ip
+		}
 
-			// Resolve container IP
-			ip, iface, err := c.ResolveContainerIP(ctx, nodeName, cont.VMID, cfg)
-			if err != nil || ip == "" {
-				continue
-			}
+		// Parse notes and tags for explicit override host/IP
+		notes := cont.Notes
+		tags := cont.Tags
+		tagMeta := ParsePVETags(tags)
+		noteMeta := ParsePVENotes(notes)
+		for k, v := range noteMeta {
+			tagMeta[k] = v
+		}
 
-			notes := ""
-			if cfg != nil {
-				notes = cfg.Description
-			}
+		if explicitHost, ok := getMetaVal(tagMeta, "host", "forward_host", "forward.host", "ip"); ok && explicitHost != "" {
+			ip = explicitHost
+			cont.IP = ip
+		}
 
-			tags := cont.Tags
-			if tags == "" && cfg != nil {
-				tags = cfg.Tags
-			}
+		allContainers = append(allContainers, cont)
 
-			route, streams, ok := ExtractRouteAndStreams(
-				cont.VMID,
-				nodeName,
-				cont.Name,
-				ip,
-				iface,
-				tags,
-				notes,
-				defaultScheme,
-				defaultSSL,
-				defaultWebsocket,
-				defaultBlockExploits,
-			)
+		if ip == "" {
+			continue
+		}
 
-			if !ok {
-				continue
-			}
+		route, streams, ok := ExtractRouteAndStreams(
+			cont.VMID,
+			nodeName,
+			cont.Name,
+			ip,
+			iface,
+			tags,
+			notes,
+			defaultScheme,
+			defaultSSL,
+			defaultWebsocket,
+			defaultBlockExploits,
+		)
 
-			if route != nil {
-				allRoutes = append(allRoutes, *route)
-			}
-			if len(streams) > 0 {
-				allStreams = append(allStreams, streams...)
-			}
+		if !ok {
+			continue
+		}
+
+		if route != nil {
+			allRoutes = append(allRoutes, *route)
+		}
+		if len(streams) > 0 {
+			allStreams = append(allStreams, streams...)
 		}
 	}
 

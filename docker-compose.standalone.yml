@@ -10,6 +10,7 @@ services:
     volumes:
       # Read-only Docker socket mapping
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./data:/data
     networks:
       - npm-network
 

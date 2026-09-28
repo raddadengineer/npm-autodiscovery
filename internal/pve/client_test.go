@@ -234,3 +234,99 @@ func TestPVEClientMockServer(t *testing.T) {
 		t.Errorf("unexpected stream config: %+v", s)
 	}
 }
+
+func TestDiscoverRoutesWithQemuAndFallback(t *testing.T) {
+	mux := http.NewServeMux()
+
+	// Proxmox nodes
+	mux.HandleFunc("/api2/json/nodes", func(w http.ResponseWriter, r *http.Request) {
+		resp := APIResponse{
+			Data: json.RawMessage(`[{"node":"nthms","status":"online"}]`),
+		}
+		_ = json.NewEncoder(w).Encode(resp)
+	})
+
+	// Cluster resources returns 1 LXC and 1 QEMU VM
+	mux.HandleFunc("/api2/json/cluster/resources", func(w http.ResponseWriter, r *http.Request) {
+		resp := APIResponse{
+			Data: json.RawMessage(`[
+				{"vmid": 100, "name": "plex-lxc", "type": "lxc", "status": "running", "node": "nthms", "tags": "npm.domain=plex.lan,npm.port=32400"},
+				{"vmid": 200, "name": "homeassistant-vm", "type": "qemu", "status": "running", "node": "nthms", "tags": "npm.domain=ha.lan,npm.port=8123"}
+			]`),
+		}
+		_ = json.NewEncoder(w).Encode(resp)
+	})
+
+	// QEMU config
+	mux.HandleFunc("/api2/json/nodes/nthms/qemu/200/config", func(w http.ResponseWriter, r *http.Request) {
+		resp := APIResponse{
+			Data: json.RawMessage(`{
+				"description": "npm.forward.host: 192.168.1.200\nnpm.websocket: true",
+				"tags": "npm.domain=ha.lan,npm.port=8123"
+			}`),
+		}
+		_ = json.NewEncoder(w).Encode(resp)
+	})
+
+	// LXC config
+	mux.HandleFunc("/api2/json/nodes/nthms/lxc/100/config", func(w http.ResponseWriter, r *http.Request) {
+		resp := APIResponse{
+			Data: json.RawMessage(`{
+				"description": "npm.forward.host: 192.168.1.100",
+				"tags": "npm.domain=plex.lan,npm.port=32400"
+			}`),
+		}
+		_ = json.NewEncoder(w).Encode(resp)
+	})
+
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	// Configure client with non-matching node "main" (should gracefully fall back to "nthms")
+	client, err := NewClient(
+		server.URL,
+		"root@pam!token",
+		"secret",
+		"main", // node name doesn't match "nthms", testing fallback!
+		false,
+		5*time.Second,
+		"eth0",
+		"192.168.1.0/24",
+	)
+	if err != nil {
+		t.Fatalf("failed initializing client: %v", err)
+	}
+
+	ctx := context.Background()
+	routes, _, instances, err := client.DiscoverRoutes(ctx, "http", false, false, true)
+	if err != nil {
+		t.Fatalf("DiscoverRoutes failed: %v", err)
+	}
+
+	if len(instances) != 2 {
+		t.Errorf("expected 2 instances (1 LXC + 1 VM), got %d", len(instances))
+	}
+
+	if len(routes) != 2 {
+		t.Fatalf("expected 2 routes, got %d", len(routes))
+	}
+
+	foundHA := false
+	foundPlex := false
+	for _, r := range routes {
+		if r.ContainerName == "homeassistant-vm" && r.ForwardPort == 8123 && r.ForwardHost == "192.168.1.200" {
+			foundHA = true
+		}
+		if r.ContainerName == "plex-lxc" && r.ForwardPort == 32400 && r.ForwardHost == "192.168.1.100" {
+			foundPlex = true
+		}
+	}
+
+	if !foundHA {
+		t.Errorf("did not find expected QEMU VM route for Home Assistant: %+v", routes)
+	}
+	if !foundPlex {
+		t.Errorf("did not find expected LXC route for Plex: %+v", routes)
+	}
+}
+

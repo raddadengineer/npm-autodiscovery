@@ -669,16 +669,34 @@ function renderProxiesTable(filterText = '') {
 }
 
 // Fetch All Containers
-async function fetchContainers() {
+async function fetchContainers(force = false) {
+  const refreshBtn = document.getElementById('btn-refresh-containers');
+  if (force && refreshBtn) {
+    refreshBtn.classList.add('loading');
+    const svg = refreshBtn.querySelector('svg');
+    if (svg) svg.style.animation = 'spin 0.75s linear infinite';
+  }
+
   try {
     const res = await fetch('/api/containers');
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     containersData = data.containers || [];
-    document.getElementById('tab-containers-count').textContent = containersData.length;
+    const countEl = document.getElementById('tab-containers-count');
+    if (countEl) countEl.textContent = containersData.length;
     renderContainersTable();
+    if (force) showToast(`Refreshed ${containersData.length} containers`, 'info');
   } catch (err) {
     console.warn('Failed to fetch containers:', err);
+    if (force) showToast(`Failed to refresh containers: ${err.message}`, 'error');
+  } finally {
+    if (force && refreshBtn) {
+      setTimeout(() => {
+        refreshBtn.classList.remove('loading');
+        const svg = refreshBtn.querySelector('svg');
+        if (svg) svg.style.animation = '';
+      }, 400);
+    }
   }
 }
 
@@ -695,6 +713,23 @@ function renderContainersTable(filterText = '') {
     const search = `${c.name} ${c.image} ${c.id} ${c.node_id || ''}`.toLowerCase();
     return search.includes(filterText);
   });
+
+  if (filtered.length === 0) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td colspan="8" style="text-align: center; padding: 3rem 1rem; color: var(--text-muted);">
+        <div style="font-size: 1.5rem; margin-bottom: 0.5rem;">📦</div>
+        <div style="font-weight: 600; margin-bottom: 0.25rem;">No containers found</div>
+        <div style="font-size: 0.85rem;">
+          ${containersData.length === 0 
+            ? 'No Docker, Proxmox VE, or LXD containers have been discovered yet. Verify your provider connections and check the live logs.' 
+            : 'No containers match your current node or search filter.'}
+        </div>
+      </td>
+    `;
+    tbody.appendChild(tr);
+    return;
+  }
 
   filtered.forEach(c => {
     const tr = document.createElement('tr');
@@ -734,7 +769,8 @@ function renderContainersTable(filterText = '') {
 
     let sourceBadge = `<span class="badge badge-cyan" style="font-size:0.65rem;">Docker</span>`;
     if (c.source === 'pve') {
-      sourceBadge = `<span class="badge" style="background: rgba(249, 115, 22, 0.15); color: #f97316; font-size:0.65rem;">Proxmox LXC</span>`;
+      const typeLabel = (c.image && c.image.toLowerCase() === 'qemu') ? 'Proxmox VM' : 'Proxmox VE';
+      sourceBadge = `<span class="badge" style="background: rgba(249, 115, 22, 0.15); color: #f97316; font-size:0.65rem;">${typeLabel}</span>`;
     } else if (c.source === 'lxd') {
       sourceBadge = `<span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #10b981; font-size:0.65rem;">LXD / Incus</span>`;
     }
@@ -951,7 +987,7 @@ function showGenerateLabelsModal(containerID) {
     const snippetTags = `npm.domain=${domain}, npm.port=${port}, npm.ssl.enabled=false`;
     const snippetNotes = `npm.domain: ${domain}\nnpm.port: ${port}\nnpm.ssl.enabled: false\nnpm.websocket: true`;
     content.innerHTML = `
-      <p class="text-muted mb-3">Add tags or notes to your Proxmox LXC container (VMID <code>${escapeHtml(container.id)}</code>) to enable automated discovery:</p>
+      <p class="text-muted mb-3">Add tags or notes to your Proxmox instance (ID <code>${escapeHtml(container.id)}</code>) to enable automated discovery:</p>
       
       <label class="text-muted" style="font-size: 0.75rem; text-transform: uppercase; font-weight:600;">Channel A: Container Tags</label>
       <div class="code-snippet-wrap mb-3">
@@ -1074,6 +1110,108 @@ function escapeHtml(str) {
     .replace(/'/g, '&#039;');
 }
 
+// Docs View Mode Switcher ('reference' | 'guides' | 'split')
+let currentDocsMode = 'reference';
+let currentDocsCategory = 'all';
+
+function setDocsMode(mode) {
+  currentDocsMode = mode;
+  localStorage.setItem('docs_view_mode', mode);
+
+  const container = document.getElementById('docs-grid-container');
+  if (container) {
+    container.className = `docs-grid mode-${mode}`;
+  }
+
+  const btnRef = document.getElementById('btn-docs-reference');
+  const btnGuides = document.getElementById('btn-docs-guides');
+  const btnSplit = document.getElementById('btn-docs-split');
+
+  if (btnRef) btnRef.classList.toggle('active', mode === 'reference');
+  if (btnGuides) btnGuides.classList.toggle('active', mode === 'guides');
+  if (btnSplit) btnSplit.classList.toggle('active', mode === 'split');
+}
+
+function filterDocsCategory(cat) {
+  currentDocsCategory = cat;
+
+  // Update chips active state
+  document.querySelectorAll('.docs-chip').forEach(chip => {
+    chip.classList.toggle('active', chip.getAttribute('data-category') === cat);
+  });
+
+  applyDocsFilters();
+}
+
+function clearDocsSearch() {
+  const input = document.getElementById('docs-search');
+  if (input) {
+    input.value = '';
+    input.focus();
+  }
+  const clearBtn = document.getElementById('docs-search-clear');
+  if (clearBtn) clearBtn.style.display = 'none';
+  applyDocsFilters();
+}
+
+function applyDocsFilters() {
+  const input = document.getElementById('docs-search');
+  const query = (input?.value || '').toLowerCase().trim();
+  const clearBtn = document.getElementById('docs-search-clear');
+  if (clearBtn) {
+    clearBtn.style.display = query ? 'block' : 'none';
+  }
+
+  const rows = document.querySelectorAll('#docs-reference-table tbody tr');
+  let matchedOptionsCount = 0;
+  let totalOptionsCount = 0;
+
+  // First pass: identify category headers and their child rows
+  let currentHeader = null;
+  let currentHeaderHasMatch = false;
+
+  rows.forEach(row => {
+    if (row.classList.contains('docs-category-header')) {
+      if (currentHeader) {
+        currentHeader.style.display = currentHeaderHasMatch ? '' : 'none';
+      }
+      currentHeader = row;
+      currentHeaderHasMatch = false;
+      return;
+    }
+
+    totalOptionsCount++;
+    const rowCat = row.getAttribute('data-category') || '';
+    const text = row.textContent.toLowerCase();
+
+    const matchesCategory = currentDocsCategory === 'all' || rowCat === currentDocsCategory;
+    const matchesSearch = !query || text.includes(query);
+
+    if (matchesCategory && matchesSearch) {
+      row.style.display = '';
+      currentHeaderHasMatch = true;
+      matchedOptionsCount++;
+    } else {
+      row.style.display = 'none';
+    }
+  });
+
+  // Handle final category header
+  if (currentHeader) {
+    currentHeader.style.display = currentHeaderHasMatch ? '' : 'none';
+  }
+
+  // Update match counter text
+  const counterEl = document.getElementById('docs-match-counter');
+  if (counterEl) {
+    if (query || currentDocsCategory !== 'all') {
+      counterEl.textContent = `Showing ${matchedOptionsCount} of ${totalOptionsCount} options`;
+    } else {
+      counterEl.textContent = `${totalOptionsCount} options & settings documented`;
+    }
+  }
+}
+
 // Docs & Setup Guides Subtab Switcher
 function initDocsSubtabs() {
   document.querySelectorAll('.docs-subtab-btn').forEach(btn => {
@@ -1089,29 +1227,40 @@ function initDocsSubtabs() {
   });
 }
 
-// Docs Reference Table Real-Time Filter
+// Docs Reference Table Real-Time Filter & Categorizer
 function initDocsSearch() {
-  const input = document.getElementById('docs-search');
-  if (!input) return;
+  // Automatically tag rows with categories based on category headers
+  const rows = document.querySelectorAll('#docs-reference-table tbody tr');
+  let currentCategory = 'docker';
 
-  input.addEventListener('input', (e) => {
-    const query = e.target.value.toLowerCase().trim();
-    const rows = document.querySelectorAll('#docs-reference-table tbody tr');
+  rows.forEach(row => {
+    if (row.classList.contains('docs-category-header')) {
+      const headerText = row.textContent.toLowerCase();
+      if (headerText.includes('docker')) currentCategory = 'docker';
+      else if (headerText.includes('health')) currentCategory = 'health';
+      else if (headerText.includes('middleware')) currentCategory = 'middleware';
+      else if (headerText.includes('subpath') || headerText.includes('location')) currentCategory = 'locations';
+      else if (headerText.includes('upstream') || headerText.includes('balancing')) currentCategory = 'upstream';
+      else if (headerText.includes('stream')) currentCategory = 'streams';
+      else if (headerText.includes('proxmox') || headerText.includes('pve')) currentCategory = 'pve';
+      else if (headerText.includes('lxd') || headerText.includes('incus')) currentCategory = 'lxd';
+      else if (headerText.includes('environment')) currentCategory = 'env';
 
-    rows.forEach(row => {
-      if (row.classList.contains('docs-category-header')) {
-        row.style.display = query === '' ? '' : 'table-row';
-        return;
-      }
-
-      const text = row.textContent.toLowerCase();
-      if (!query || text.includes(query)) {
-        row.style.display = '';
-      } else {
-        row.style.display = 'none';
-      }
-    });
+      row.setAttribute('data-category', currentCategory);
+    } else {
+      row.setAttribute('data-category', currentCategory);
+    }
   });
+
+  const input = document.getElementById('docs-search');
+  if (input) {
+    input.addEventListener('input', applyDocsFilters);
+  }
+
+  // Restore saved view mode or default intelligently based on screen width
+  const savedMode = localStorage.getItem('docs_view_mode') || (window.innerWidth >= 1440 ? 'split' : 'reference');
+  setDocsMode(savedMode);
+  applyDocsFilters();
 }
 
 // Copy Code from Guide Snippet
@@ -1251,7 +1400,7 @@ function renderClusterNodes(filterText = '') {
             <span class="text-muted">🐳 Docker Engine:</span>
             <span>${node.docker_connected ? `<span style="color:#10b981; font-weight:600;">Connected</span> <span style="font-size:0.75rem; color:var(--text-muted); font-family:var(--font-mono);">(${escapeHtml(node.docker_version || 'active')})</span>` : '<span style="color:#f43f5e;">Disconnected</span>'}</span>
           </div>
-          <div class="node-engine-row" style="cursor: pointer;" onclick="openProxmoxModal('${escapeHtml(nodeId)}')" title="Configure Proxmox VE LXC Discovery">
+          <div class="node-engine-row" style="cursor: pointer;" onclick="openProxmoxModal('${escapeHtml(nodeId)}')" title="Configure Proxmox VE Discovery">
             <span class="text-muted">⚡ Proxmox VE:</span>
             <span>
               ${node.pve_connected 
@@ -1271,7 +1420,7 @@ function renderClusterNodes(filterText = '') {
           <span style="font-size:0.75rem; color:var(--text-muted);">Uptime: ${escapeHtml(uptimeStr)}</span>
           <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
             <button class="btn btn-secondary btn-sm" onclick="openProxmoxModal('${escapeHtml(nodeId)}')">
-              ⚡ Proxmox LXC
+              ⚡ Proxmox VE
             </button>
             <button class="btn btn-secondary btn-sm" onclick="filterContainersByNode('${escapeHtml(nodeId)}')">
               Inspect Containers
@@ -2102,9 +2251,32 @@ async function testProxmoxConnection() {
     const data = await res.json();
     if (resultDiv) {
       if (data.success) {
-        resultDiv.className = 'pve-test-success';
-        const nodesStr = (data.nodes && data.nodes.length > 0) ? ` (Nodes: ${data.nodes.join(', ')})` : '';
-        resultDiv.innerHTML = `✓ <strong>Connected successfully!</strong> Proxmox VE ${escapeHtml(data.version || 'Online')}${escapeHtml(nodesStr)}`;
+        let contentHtml = `<div>✓ <strong>${escapeHtml(data.message || 'Connected successfully!')}</strong></div>`;
+
+        if (data.nodes && data.nodes.length > 0) {
+          contentHtml += `<div style="margin-top: 0.45rem; font-size: 0.78rem; display: flex; align-items: center; gap: 0.45rem; flex-wrap: wrap;">
+            <span style="color: var(--text-muted);">Quick-select node:</span>`;
+          data.nodes.forEach(n => {
+            contentHtml += `<button type="button" class="badge badge-cyan" style="cursor: pointer; border: 1px solid rgba(56, 189, 248, 0.4); background: rgba(56, 189, 248, 0.15); padding: 3px 8px; border-radius: 4px;" onclick="document.getElementById('pve-modal-target-node').value='${escapeHtml(n)}'" title="Set target node to ${escapeHtml(n)}">${escapeHtml(n)} ↙</button>`;
+          });
+          contentHtml += `<button type="button" class="badge badge-secondary" style="cursor: pointer; border: 1px solid var(--border-color); background: rgba(255, 255, 255, 0.08); padding: 3px 8px; border-radius: 4px;" onclick="document.getElementById('pve-modal-target-node').value=''" title="Discover all cluster nodes">All Nodes (leave blank)</button>
+          </div>`;
+        }
+
+        if (data.node_warning) {
+          contentHtml += `<div style="margin-top: 0.5rem; padding: 0.5rem 0.75rem; border-radius: 6px; background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.4); color: #fbbf24; font-size: 0.8rem; line-height: 1.4;">
+            ⚠️ <strong>Node Mismatch:</strong> ${escapeHtml(data.node_warning)}
+          </div>`;
+        }
+
+        if (data.warning) {
+          contentHtml += `<div style="margin-top: 0.5rem; padding: 0.5rem 0.75rem; border-radius: 6px; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); color: #f87171; font-size: 0.8rem; line-height: 1.4;">
+            ⚠️ <strong>Permissions Action Needed:</strong> ${escapeHtml(data.warning)}
+          </div>`;
+        }
+
+        resultDiv.className = (data.warning || data.node_warning) ? 'pve-test-warning' : 'pve-test-success';
+        resultDiv.innerHTML = contentHtml;
       } else {
         resultDiv.className = 'pve-test-error';
         resultDiv.innerHTML = `✗ <strong>Connection failed:</strong> ${escapeHtml(data.error || 'Unknown error')}`;
@@ -2185,11 +2357,15 @@ async function saveProxmoxConfig() {
       selectPveEndpoint(configId);
     }
 
-    // Refresh cluster nodes and status overview
+    // Refresh cluster nodes, status overview, and containers
     fetchClusterNodes();
     fetchStatus();
-    // Trigger immediate sync
-    fetch('/api/sync', { method: 'POST' }).catch(() => {});
+    fetchContainers(true);
+    // Trigger immediate sync and scheduled container refreshes
+    fetch('/api/sync', { method: 'POST' }).then(() => {
+      setTimeout(() => fetchContainers(true), 1500);
+      setTimeout(() => fetchContainers(true), 3500);
+    }).catch(() => {});
   } catch (err) {
     showToast(`Failed to save Proxmox config: ${err.message}`, 'error');
   } finally {
@@ -2257,6 +2433,10 @@ window.closeProxmoxModal = closeProxmoxModal;
 window.addNewPveEndpoint = addNewPveEndpoint;
 window.deleteCurrentPveEndpoint = deleteCurrentPveEndpoint;
 window.selectPveEndpoint = selectPveEndpoint;
+window.setDocsMode = setDocsMode;
+window.filterDocsCategory = filterDocsCategory;
+window.clearDocsSearch = clearDocsSearch;
+window.fetchContainers = fetchContainers;
 
 function initProxmoxModal() {
   const modal = document.getElementById('proxmox-config-modal');

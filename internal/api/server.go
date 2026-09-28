@@ -731,12 +731,77 @@ func (s *Server) handleProxmoxTest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.writeJSON(w, http.StatusOK, map[string]interface{}{
-		"success": true,
-		"version": testClient.Version(),
-		"nodes":   nodes,
-		"message": fmt.Sprintf("Connected successfully to Proxmox VE %s", testClient.Version()),
-	})
+	// 1. Check permissions to diagnose Privilege Separation without ACL
+	perms, _ := testClient.GetPermissions(ctx)
+	hasZeroPerms := (perms != nil && len(perms) == 0)
+
+	// 2. Count accessible LXCs and QEMU VMs
+	clusterItems, _ := testClient.ListClusterContainers(ctx)
+	lxcCount := 0
+	vmCount := 0
+	for _, it := range clusterItems {
+		if strings.EqualFold(it.Type, "qemu") {
+			vmCount++
+		} else {
+			lxcCount++
+		}
+	}
+	if len(clusterItems) == 0 && len(nodes) > 0 {
+		for _, n := range nodes {
+			if lxcs, err := testClient.ListLXCContainers(ctx, n); err == nil {
+				lxcCount += len(lxcs)
+			}
+			if vms, err := testClient.ListQemuVMs(ctx, n); err == nil {
+				vmCount += len(vms)
+			}
+		}
+	}
+
+	// 3. Verify target node configuration
+	var nodeWarning string
+	if req.Node != "" && len(nodes) > 0 {
+		matched := false
+		for _, part := range strings.Split(req.Node, ",") {
+			part = strings.TrimSpace(part)
+			for _, on := range nodes {
+				if strings.EqualFold(part, on) {
+					matched = true
+					break
+				}
+			}
+			if matched {
+				break
+			}
+		}
+		if !matched {
+			nodeWarning = fmt.Sprintf("Target node '%s' does not match detected node(s) [%s]. Leave blank to discover all nodes.", req.Node, strings.Join(nodes, ", "))
+		}
+	}
+
+	var permWarning string
+	if hasZeroPerms {
+		permWarning = "API Token has 0 permissions (Privilege Separation is enabled). In Proxmox VE: either uncheck 'Privilege Separation' when creating the token, or go to Datacenter > Permissions > Add > API Token Permission (Path: '/', Role: 'PVEAuditor' or 'Administrator')."
+	}
+
+	msg := fmt.Sprintf("Connected successfully to Proxmox VE %s", testClient.Version())
+	if len(nodes) > 0 {
+		msg += fmt.Sprintf(" (Nodes: %s)", strings.Join(nodes, ", "))
+	}
+	msg += fmt.Sprintf(" • Visible: %d LXCs, %d VMs", lxcCount, vmCount)
+
+	resp := map[string]interface{}{
+		"success":      true,
+		"version":      testClient.Version(),
+		"nodes":        nodes,
+		"lxc_count":    lxcCount,
+		"vm_count":     vmCount,
+		"has_perms":    !hasZeroPerms,
+		"message":      msg,
+		"warning":      permWarning,
+		"node_warning": nodeWarning,
+	}
+
+	s.writeJSON(w, http.StatusOK, resp)
 }
 
 func (s *Server) writeJSON(w http.ResponseWriter, code int, data interface{}) {

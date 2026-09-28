@@ -809,16 +809,237 @@ body {
 }
 
 /* Docs & Cheatsheet */
-.docs-grid {
-  display: grid;
-  grid-template-columns: 1.4fr 1fr;
-  gap: 1.5rem;
+.docs-view-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.85rem 1.25rem;
+  margin-bottom: 1.25rem;
+  flex-wrap: wrap;
 }
 
-@media (max-width: 1024px) {
-  .docs-grid {
+.docs-view-switcher {
+  display: flex;
+  background: rgba(0, 0, 0, 0.4);
+  padding: 0.25rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  gap: 0.25rem;
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.docs-view-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.docs-view-btn:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.docs-view-btn.active {
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.25), rgba(139, 92, 246, 0.25));
+  border-color: rgba(6, 182, 212, 0.4);
+  color: #fff;
+  box-shadow: 0 0 12px rgba(6, 182, 212, 0.2);
+}
+
+@media (max-width: 900px) {
+  .split-toggle-btn {
+    display: none !important;
+  }
+}
+
+/* Category Filter Chips Bar */
+.docs-chips-container {
+  display: flex;
+  gap: 0.4rem;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  padding: 0.5rem 0 0.85rem;
+  margin-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.docs-chips-container::-webkit-scrollbar {
+  display: none;
+}
+
+.docs-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.35rem 0.75rem;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.docs-chip:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.docs-chip.active {
+  background: rgba(6, 182, 212, 0.2);
+  border-color: var(--accent-cyan);
+  color: var(--accent-cyan);
+  font-weight: 600;
+  box-shadow: 0 0 10px rgba(6, 182, 212, 0.15);
+}
+
+/* Docs Grid Modes */
+.docs-grid {
+  display: grid;
+  gap: 1.25rem;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.docs-panel-reference,
+.docs-panel-guides {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+}
+
+.docs-grid.mode-reference {
+  grid-template-columns: 1fr;
+}
+
+.docs-grid.mode-reference .docs-panel-guides {
+  display: none !important;
+}
+
+.docs-grid.mode-guides {
+  grid-template-columns: 1fr;
+}
+
+.docs-grid.mode-guides .docs-panel-reference {
+  display: none !important;
+}
+
+/* Split View: Side-by-side layout fitting viewport with zero horizontal blowout */
+.docs-grid.mode-split {
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  align-items: stretch;
+}
+
+/* Dual Independent Scrollable Panes for Split View */
+.docs-grid.mode-split .docs-table-wrap,
+.docs-grid.mode-split .docs-guides-body {
+  max-height: calc(100vh - 290px);
+  min-height: 520px;
+  overflow-y: auto;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-right: 0.35rem;
+}
+
+/* Reference Mode: Smooth scrollable table container */
+.docs-grid.mode-reference .docs-table-wrap {
+  max-height: calc(100vh - 290px);
+  min-height: 520px;
+  overflow-y: auto;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Guides Mode: Natural content flow */
+.docs-grid.mode-guides .docs-guides-body {
+  max-height: none;
+  overflow: visible;
+}
+
+/* Custom sleek scrollbars for Split View containers */
+.docs-table-wrap::-webkit-scrollbar,
+.docs-guides-body::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.docs-table-wrap::-webkit-scrollbar-track,
+.docs-guides-body::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+}
+.docs-table-wrap::-webkit-scrollbar-thumb,
+.docs-guides-body::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 4px;
+}
+.docs-table-wrap::-webkit-scrollbar-thumb:hover,
+.docs-guides-body::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-cyan);
+}
+
+/* Code blocks and pre tags must never blow out panel widths */
+.docs-panel-guides pre,
+.docs-panel-guides code,
+.docs-panel-guides .code-snippet-wrap {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.docs-grid.mode-split .docs-table {
+  min-width: 500px;
+}
+
+@media (max-width: 992px) {
+  .docs-grid.mode-split {
     grid-template-columns: 1fr;
   }
+  .docs-grid.mode-split .docs-table-wrap,
+  .docs-grid.mode-split .docs-guides-body {
+    max-height: 580px;
+  }
+}
+
+.docs-search-box {
+  width: 100%;
+  max-width: 320px;
+  position: relative;
+}
+
+.docs-search-clear {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1.1rem;
+  cursor: pointer;
+  line-height: 1;
+  padding: 2px 4px;
+}
+
+.docs-search-clear:hover {
+  color: #fff;
 }
 
 .docs-table {
@@ -834,6 +1055,10 @@ body {
   color: var(--text-muted);
   text-transform: uppercase;
   border-bottom: 1px solid var(--border-subtle);
+  position: sticky;
+  top: 0;
+  background: #111827;
+  z-index: 2;
 }
 
 .docs-table td {
@@ -849,6 +1074,73 @@ body {
   border-radius: var(--radius-sm);
   color: var(--accent-cyan);
   font-size: 0.8rem;
+  word-break: break-all;
+}
+
+/* Responsive Table for Mobile / Tablets */
+@media (max-width: 768px) {
+  .docs-table, 
+  .docs-table tbody, 
+  .docs-table tr, 
+  .docs-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .docs-table thead {
+    display: none;
+  }
+
+  .docs-table tr {
+    margin-bottom: 0.85rem;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    padding: 0.75rem 0.9rem;
+  }
+
+  .docs-table tr.docs-category-header {
+    background: rgba(6, 182, 212, 0.12);
+    border-color: rgba(6, 182, 212, 0.3);
+    padding: 0.65rem 0.9rem;
+    margin-top: 1.25rem;
+    border-radius: var(--radius-sm);
+  }
+
+  .docs-table tr.docs-category-header td {
+    padding: 0;
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--accent-cyan);
+    border-bottom: none;
+  }
+
+  .docs-table td {
+    padding: 0.35rem 0;
+    border-bottom: none;
+    font-size: 0.85rem;
+  }
+
+  .docs-table td:nth-child(1) {
+    font-size: 0.9rem;
+    padding-bottom: 0.4rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    margin-bottom: 0.4rem;
+  }
+
+  .docs-table td:nth-child(2),
+  .docs-table td:nth-child(3) {
+    display: inline-block;
+    width: auto;
+    margin-right: 0.75rem;
+  }
+
+  .docs-table td:nth-child(4) {
+    display: block;
+    margin-top: 0.35rem;
+    color: var(--text-secondary);
+    line-height: 1.45;
+  }
 }
 
 .type-tag {
@@ -1465,6 +1757,12 @@ body {
   color: #34d399 !important;
 }
 
+.pve-test-warning {
+  background: rgba(245, 158, 11, 0.12) !important;
+  border: 1px solid rgba(245, 158, 11, 0.4) !important;
+  color: #fbbf24 !important;
+}
+
 .pve-test-error {
   background: rgba(244, 63, 94, 0.12) !important;
   border: 1px solid rgba(244, 63, 94, 0.4) !important;
@@ -1935,6 +2233,32 @@ body {
     width: 100%;
     justify-content: center;
     min-height: 38px;
+  }
+
+  /* PVE Modal Mobile Controls */
+  .pve-endpoints-pills-list {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-bottom: 0.35rem;
+  }
+
+  .pve-modal-actions {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 0.65rem !important;
+  }
+
+  .pve-modal-actions > div {
+    width: 100% !important;
+    display: flex !important;
+    gap: 0.5rem !important;
+  }
+
+  .pve-modal-actions .btn {
+    flex: 1 !important;
+    justify-content: center !important;
+    min-height: 40px !important;
   }
 
   /* Toast Notification */

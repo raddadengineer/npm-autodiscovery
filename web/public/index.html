@@ -152,7 +152,7 @@
 
         <div class="metric-card glass-panel">
           <div class="metric-header">
-            <span class="metric-title">Proxmox VE LXC</span>
+            <span class="metric-title">Proxmox VE</span>
             <div class="metric-icon-wrap" style="background: rgba(255, 111, 0, 0.15); color: #ff8f00;">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
@@ -441,8 +441,8 @@
         <div class="panel glass-panel">
           <div class="panel-header">
             <div class="panel-title-group">
-              <h2>Docker Containers Inspector</h2>
-              <p class="panel-subtitle">Review all containers running on the Docker daemon and their discovery readiness.</p>
+              <h2>Discovered Containers &amp; Proxmox VE Inspector</h2>
+              <p class="panel-subtitle">Review all containers running across Docker engines, Proxmox VE hypervisors (LXCs &amp; VMs), and Canonical LXD daemons.</p>
             </div>
             <div class="panel-actions">
               <div class="search-input-wrap">
@@ -455,6 +455,14 @@
               <select id="containers-node-filter" class="table-filter-select" title="Filter containers by Cluster Node">
                 <option value="all">🌐 All Nodes</option>
               </select>
+              <button class="btn btn-secondary btn-sm" id="btn-refresh-containers" onclick="fetchContainers(true)" title="Force Refresh Containers">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 4px;">
+                  <polyline points="23 4 23 10 17 10"></polyline>
+                  <polyline points="1 20 1 14 7 14"></polyline>
+                  <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                </svg>
+                <span>Refresh</span>
+              </button>
             </div>
           </div>
 
@@ -538,23 +546,75 @@
 
       <!-- TAB 4: Label Reference & Setup -->
       <section id="docs-view" class="tab-content">
-        <div class="docs-grid">
+        <!-- View Mode Segmented Controls Bar -->
+        <div class="docs-view-header glass-panel">
+          <div class="docs-view-switcher">
+            <button class="docs-view-btn active" id="btn-docs-reference" onclick="setDocsMode('reference')">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+                <line x1="16" y1="13" x2="8" y2="13"></line>
+                <line x1="16" y1="17" x2="8" y2="17"></line>
+                <polyline points="10 9 9 9 8 9"></polyline>
+              </svg>
+              <span>Label & Options Reference</span>
+            </button>
+            <button class="docs-view-btn" id="btn-docs-guides" onclick="setDocsMode('guides')">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"></path>
+                <path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"></path>
+              </svg>
+              <span>Setup Guides & Quickstarts</span>
+            </button>
+            <button class="docs-view-btn split-toggle-btn" id="btn-docs-split" onclick="setDocsMode('split')">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                <line x1="12" y1="3" x2="12" y2="21"></line>
+              </svg>
+              <span>Split View</span>
+            </button>
+          </div>
+          <div class="docs-view-meta">
+            <span class="text-muted" style="font-size:0.8rem;" id="docs-match-counter">50+ settings & labels documented</span>
+          </div>
+        </div>
+
+        <div class="docs-grid mode-reference" id="docs-grid-container">
           
           <!-- LEFT PANEL: Comprehensive Label & Metadata Reference -->
-          <div class="panel glass-panel">
-            <div class="panel-header" style="flex-wrap: wrap; gap: 0.75rem; align-items: flex-start;">
+          <div class="panel glass-panel docs-panel-reference" id="docs-panel-ref">
+            <div class="panel-header" style="flex-wrap: wrap; gap: 0.75rem; align-items: center; justify-content: space-between;">
               <div>
                 <h2>Supported Labels & Provider Metadata</h2>
                 <p class="text-muted" style="margin-top: 0.25rem; font-size: 0.85rem;">
                   Complete v2.0 reference for Docker labels, Proxmox VE tags/notes, LXD/Incus metadata, and environment variables.
                 </p>
               </div>
-              <div style="display: flex; gap: 0.5rem; align-items: center; width: 100%; max-width: 320px;">
-                <input type="text" id="docs-search" class="search-input" placeholder="Filter labels, tags, or settings..." style="width: 100%;">
+              <div class="search-input-wrap docs-search-box">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="11" cy="11" r="8"></circle>
+                  <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                </svg>
+                <input type="text" id="docs-search" placeholder="Filter labels, tags, or settings..." />
+                <button class="docs-search-clear" id="docs-search-clear" onclick="clearDocsSearch()" style="display:none;" title="Clear search">&times;</button>
               </div>
             </div>
+
+            <!-- Category Chips Filter Bar -->
+            <div class="docs-chips-container" id="docs-category-chips">
+              <button class="docs-chip active" data-category="all" onclick="filterDocsCategory('all')">All Options (50+)</button>
+              <button class="docs-chip" data-category="docker" onclick="filterDocsCategory('docker')">🌐 Docker Ingress</button>
+              <button class="docs-chip" data-category="health" onclick="filterDocsCategory('health')">🛡️ Zero-502 Health</button>
+              <button class="docs-chip" data-category="middleware" onclick="filterDocsCategory('middleware')">🔧 Middlewares</button>
+              <button class="docs-chip" data-category="locations" onclick="filterDocsCategory('locations')">📍 Subpaths</button>
+              <button class="docs-chip" data-category="upstream" onclick="filterDocsCategory('upstream')">⚖️ Balancing</button>
+              <button class="docs-chip" data-category="streams" onclick="filterDocsCategory('streams')">🎮 L4 Streams</button>
+              <button class="docs-chip" data-category="pve" onclick="filterDocsCategory('pve')">⚡ Proxmox VE</button>
+              <button class="docs-chip" data-category="lxd" onclick="filterDocsCategory('lxd')">🐧 LXD / Incus</button>
+              <button class="docs-chip" data-category="env" onclick="filterDocsCategory('env')">⚙️ Environment Vars</button>
+            </div>
             
-            <div class="table-responsive" style="max-height: 720px; overflow-y: auto;">
+            <div class="table-responsive docs-table-wrap" id="docs-table-wrap">
               <table class="docs-table" id="docs-reference-table">
                 <thead>
                   <tr>
@@ -951,9 +1011,12 @@
           </div>
 
           <!-- RIGHT PANEL: Interactive Setup Guides & Production Configurations -->
-          <div class="panel glass-panel">
+          <div class="panel glass-panel docs-panel-guides" id="docs-panel-quickstarts">
             <div class="panel-header">
-              <h2>Setup Guides & Quickstarts</h2>
+              <div class="panel-title-group">
+                <h2>Setup Guides & Quickstarts</h2>
+                <p class="panel-subtitle">Production-ready configurations for Docker, Proxmox VE, LXD, and Multi-Node Clusters.</p>
+              </div>
             </div>
             
             <!-- Guide Sub-tabs -->
@@ -962,7 +1025,7 @@
                 🐳 Docker Compose
               </button>
               <button class="docs-subtab-btn" data-guide="pve-guide">
-                ⚡ Proxmox VE LXC
+                ⚡ Proxmox VE
               </button>
               <button class="docs-subtab-btn" data-guide="lxd-guide">
                 🐧 LXD / Incus
@@ -978,7 +1041,9 @@
               </button>
             </div>
 
-            <!-- PANE 1: Docker Compose -->
+            <!-- Scrollable Guide Content Wrapper for Split View -->
+            <div class="docs-guides-body" id="docs-guides-body">
+              <!-- PANE 1: Docker Compose -->
             <div class="docs-guide-pane active" id="docker-compose-guide">
               <p class="mb-3 text-muted">Complete production stack: Nginx Proxy Manager, Auto-Discovery Sidecar, HealthChecked microservice with middlewares, and L4 stream:</p>
               
@@ -1259,6 +1324,7 @@ PUSH_INTERVAL=15s</code></pre>
             <div class="info-alert mt-4">
               <strong>💡 Pro Tip:</strong> In v2.0, all providers (Docker, Proxmox VE, Canonical LXD/Incus, and static IaC manifests) run simultaneously under the same syncer without collision, unified under your single Nginx Proxy Manager instance!
             </div>
+            </div> <!-- end docs-guides-body -->
           </div>
 
         </div>
@@ -1491,7 +1557,7 @@ PUSH_INTERVAL=15s</code></pre>
         <div style="display: flex; align-items: center; gap: 0.65rem;">
           <span style="font-size: 1.35rem;">⚡</span>
           <div>
-            <h3 style="margin: 0; line-height: 1.2;">Proxmox LXC Discovery Configuration</h3>
+            <h3 style="margin: 0; line-height: 1.2;">Proxmox LXC &amp; VM Discovery Configuration</h3>
             <p style="margin: 0; font-size: 0.78rem; color: var(--text-muted); font-weight: normal;">
               Configure Proxmox VE auto-discovery endpoints on node: <span id="pve-modal-node-badge" class="badge badge-cyan" style="font-size: 0.75rem;">node-id</span>
             </p>
@@ -1528,7 +1594,7 @@ PUSH_INTERVAL=15s</code></pre>
             <div style="display: flex; align-items: center; gap: 0.75rem;">
               <div>
                 <div style="font-weight: 600; font-size: 0.85rem; text-align: right;">Enable Discovery</div>
-                <div style="font-size: 0.72rem; color: var(--text-muted); text-align: right;">Route LXCs in NPM</div>
+                <div style="font-size: 0.72rem; color: var(--text-muted); text-align: right;">Route LXCs &amp; VMs in NPM</div>
               </div>
               <input type="checkbox" id="pve-modal-enabled" class="modern-toggle" />
             </div>
@@ -1552,7 +1618,7 @@ PUSH_INTERVAL=15s</code></pre>
                 <label class="form-label" for="pve-modal-target-node">
                   <span>Target PVE Node(s)</span>
                 </label>
-                <input type="text" id="pve-modal-target-node" class="form-input" placeholder="e.g. pve1 or pve1, pve2" />
+                <input type="text" id="pve-modal-target-node" class="form-input" placeholder="Leave blank for all, or e.g. pve1" />
                 <span class="form-hint">Comma-separated nodes, or leave blank for all cluster nodes.</span>
               </div>
             </div>
@@ -1601,8 +1667,8 @@ PUSH_INTERVAL=15s</code></pre>
           </div>
 
           <!-- Active Endpoint Action Row -->
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid var(--border-color); flex-wrap: wrap; gap: 0.75rem;">
-            <div style="display: flex; gap: 0.5rem; align-items: center;">
+          <div class="pve-modal-actions" style="display: flex; justify-content: space-between; align-items: center; margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid var(--border-color); flex-wrap: wrap; gap: 0.75rem;">
+            <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
               <button type="button" class="btn btn-secondary btn-sm" id="btn-test-pve-conn">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>

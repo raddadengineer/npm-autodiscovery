@@ -2,22 +2,106 @@ package pve
 
 import (
 	"encoding/json"
+	"strconv"
+	"strings"
 	"time"
 )
 
-// LXCContainerSummary represents an LXC container returned by /api2/json/nodes/{node}/lxc.
+// LXCContainerSummary represents an LXC container returned by /api2/json/nodes/{node}/lxc or /api2/json/cluster/resources.
 type LXCContainerSummary struct {
 	VMID    int     `json:"vmid"`
 	Name    string  `json:"name"`
 	Status  string  `json:"status"` // "running", "stopped", etc.
 	Type    string  `json:"type"`   // "lxc"
 	Tags    string  `json:"tags,omitempty"`
-	CPUs    int     `json:"cpus,omitempty"`
+	CPUs    float64 `json:"cpus,omitempty"`
 	MaxMem  int64   `json:"maxmem,omitempty"`
 	Mem     int64   `json:"mem,omitempty"`
 	MaxDisk int64   `json:"maxdisk,omitempty"`
 	Uptime  int64   `json:"uptime,omitempty"`
 	Node    string  `json:"node,omitempty"`
+	Notes   string  `json:"notes,omitempty"`
+	IP      string  `json:"ip,omitempty"`
+}
+
+// UnmarshalJSON implements custom JSON unmarshaling to handle variable Proxmox VE types safely.
+func (s *LXCContainerSummary) UnmarshalJSON(data []byte) error {
+	var raw struct {
+		VMID    interface{} `json:"vmid"`
+		Name    string      `json:"name"`
+		Status  string      `json:"status"`
+		Type    string      `json:"type"`
+		Tags    interface{} `json:"tags"`
+		CPUs    interface{} `json:"cpus"`
+		MaxMem  interface{} `json:"maxmem"`
+		Mem     interface{} `json:"mem"`
+		MaxDisk interface{} `json:"maxdisk"`
+		Uptime  interface{} `json:"uptime"`
+		Node    string      `json:"node"`
+		Notes   string      `json:"notes"`
+		IP      string      `json:"ip"`
+	}
+
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	s.Name = raw.Name
+	s.Status = raw.Status
+	s.Type = raw.Type
+	s.Node = raw.Node
+	s.Notes = raw.Notes
+	s.IP = raw.IP
+
+	switch v := raw.VMID.(type) {
+	case float64:
+		s.VMID = int(v)
+	case int:
+		s.VMID = v
+	case string:
+		if n, err := strconv.Atoi(v); err == nil {
+			s.VMID = n
+		}
+	}
+
+	switch v := raw.Tags.(type) {
+	case string:
+		s.Tags = v
+	case []interface{}:
+		var parts []string
+		for _, item := range v {
+			if str, ok := item.(string); ok {
+				parts = append(parts, str)
+			}
+		}
+		s.Tags = strings.Join(parts, ",")
+	}
+
+	switch v := raw.CPUs.(type) {
+	case float64:
+		s.CPUs = v
+	case int:
+		s.CPUs = float64(v)
+	}
+
+	parseInt64 := func(val interface{}) int64 {
+		switch v := val.(type) {
+		case float64:
+			return int64(v)
+		case int:
+			return int64(v)
+		case int64:
+			return v
+		}
+		return 0
+	}
+
+	s.MaxMem = parseInt64(raw.MaxMem)
+	s.Mem = parseInt64(raw.Mem)
+	s.MaxDisk = parseInt64(raw.MaxDisk)
+	s.Uptime = parseInt64(raw.Uptime)
+
+	return nil
 }
 
 // LXCConfig represents the detailed configuration of an LXC container from /config.
