@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
@@ -27,7 +28,7 @@
           </div>
           <div class="brand-text">
             <h1>NPM Auto-Discovery</h1>
-            <span class="badge version-badge">v2.0.3</span>
+            <span class="badge version-badge">v2.0.4</span>
           </div>
         </div>
 
@@ -303,19 +304,22 @@
             </div>
           </div>
 
+          <!-- Active Column Filters Summary Bar -->
+          <div class="active-filters-bar" id="proxies-active-filters" style="display: none;"></div>
+
           <div class="table-responsive">
             <table class="data-table" id="proxies-table">
               <thead>
                 <tr>
-                  <th>Status</th>
-                  <th>Domain Names</th>
-                  <th>Forward Target</th>
-                  <th>Node / Host</th>
-                  <th>Container</th>
-                  <th>SSL / TLS</th>
-                  <th>Strategy</th>
-                  <th>NPM ID</th>
-                  <th>Last Synced</th>
+                  <th data-table="proxies" data-col="status" data-label="Status">Status</th>
+                  <th data-table="proxies" data-col="domain" data-label="Domain Names">Domain Names</th>
+                  <th data-table="proxies" data-col="target" data-label="Forward Target">Forward Target</th>
+                  <th data-table="proxies" data-col="node" data-label="Node / Host">Node / Host</th>
+                  <th data-table="proxies" data-col="container" data-label="Container">Container</th>
+                  <th data-table="proxies" data-col="ssl" data-label="SSL / TLS">SSL / TLS</th>
+                  <th data-table="proxies" data-col="strategy" data-label="Strategy">Strategy</th>
+                  <th data-table="proxies" data-col="npm_id" data-label="NPM ID">NPM ID</th>
+                  <th data-table="proxies" data-col="synced" data-label="Last Synced">Last Synced</th>
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -364,19 +368,22 @@
             </div>
           </div>
 
+          <!-- Active Column Filters Summary Bar -->
+          <div class="active-filters-bar" id="streams-active-filters" style="display: none;"></div>
+
           <div class="table-responsive">
             <table class="data-table" id="streams-table">
               <thead>
                 <tr>
-                  <th>Status</th>
-                  <th>Incoming Port</th>
-                  <th>Forward Target</th>
-                  <th>Protocols</th>
-                  <th>Source</th>
-                  <th>Container / Service</th>
-                  <th>Node / Host</th>
-                  <th>NPM Stream ID</th>
-                  <th>Last Synced</th>
+                  <th data-table="streams" data-col="status" data-label="Status">Status</th>
+                  <th data-table="streams" data-col="incoming_port" data-label="Incoming Port">Incoming Port</th>
+                  <th data-table="streams" data-col="target" data-label="Forward Target">Forward Target</th>
+                  <th data-table="streams" data-col="protocols" data-label="Protocols">Protocols</th>
+                  <th data-table="streams" data-col="source" data-label="Source">Source</th>
+                  <th data-table="streams" data-col="container" data-label="Container / Service">Container / Service</th>
+                  <th data-table="streams" data-col="node" data-label="Node / Host">Node / Host</th>
+                  <th data-table="streams" data-col="npm_id" data-label="NPM Stream ID">NPM Stream ID</th>
+                  <th data-table="streams" data-col="synced" data-label="Last Synced">Last Synced</th>
                 </tr>
               </thead>
               <tbody id="streams-tbody">
@@ -466,17 +473,20 @@
             </div>
           </div>
 
+          <!-- Active Column Filters Summary Bar -->
+          <div class="active-filters-bar" id="containers-active-filters" style="display: none;"></div>
+
           <div class="table-responsive">
             <table class="data-table" id="containers-table">
               <thead>
                 <tr>
-                  <th>Container</th>
-                  <th>Node</th>
-                  <th>Image</th>
-                  <th>State</th>
-                  <th>Discovery Status</th>
-                  <th>Detected Domains</th>
-                  <th>Port</th>
+                  <th data-table="containers" data-col="container" data-label="Container">Container</th>
+                  <th data-table="containers" data-col="node" data-label="Node">Node</th>
+                  <th data-table="containers" data-col="image" data-label="Image">Image</th>
+                  <th data-table="containers" data-col="state" data-label="State">State</th>
+                  <th data-table="containers" data-col="discovery" data-label="Discovery Status">Discovery Status</th>
+                  <th data-table="containers" data-col="domains" data-label="Detected Domains">Detected Domains</th>
+                  <th data-table="containers" data-col="port" data-label="Port">Port</th>
                   <th>Action</th>
                 </tr>
               </thead>

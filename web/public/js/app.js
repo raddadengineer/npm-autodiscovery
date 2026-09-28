@@ -104,6 +104,7 @@ function activateDocsSubtab(guideId) {
 document.addEventListener('DOMContentLoaded', () => {
   initTabs();
   initRouter();
+  initTableHeaders();
   initSearchAndFilters();
   initSyncButton();
   initEventStream();
@@ -132,6 +133,7 @@ function initTabs() {
 }
 
 function switchTab(tabId, updateUrl = true) {
+  closeColumnFilterPopover();
   activeTab = tabId;
   document.querySelectorAll('.tab-btn').forEach(b => {
     b.classList.toggle('active', b.getAttribute('data-tab') === tabId);
@@ -161,6 +163,571 @@ function switchTab(tabId, updateUrl = true) {
   } else if (tabId === 'proxies-view') {
     fetchProxies();
   }
+}
+
+// ==============================================================================
+// Interactive Table Header Filtering & Sorting Engine
+// ==============================================================================
+
+const tableFilters = {
+  proxies: {
+    columnFilters: {}, // { [colKey]: { text: '', values: Set() } }
+    sort: { colKey: null, direction: null },
+  },
+  streams: {
+    columnFilters: {},
+    sort: { colKey: null, direction: null },
+  },
+  containers: {
+    columnFilters: {},
+    sort: { colKey: null, direction: null },
+  },
+};
+
+let activePopover = null;
+
+function getTableData(tableId) {
+  if (tableId === 'proxies') return proxiesData || [];
+  if (tableId === 'streams') return streamsData || [];
+  if (tableId === 'containers') return containersData || [];
+  return [];
+}
+
+function getColumnValue(tableId, item, colKey) {
+  if (tableId === 'proxies') {
+    switch (colKey) {
+      case 'status':
+        return item.enabled === false ? 'Disabled' : 'Live';
+      case 'domain':
+        return (item.domain_names && item.domain_names.length > 0) ? item.domain_names.join(', ') : '';
+      case 'target':
+        return `${item.forward_scheme || 'http'}://${item.forward_host}:${item.forward_port}`;
+      case 'node':
+        return item.host_id || 'controller';
+      case 'container':
+        return item.container_name || (item.meta && item.meta.source === 'iac' ? 'IaC Manifest' : '') || item.container_id || 'Proxy Host';
+      case 'ssl':
+        if (item.ssl_forced) return 'Forced';
+        if (item.ssl_enabled || (item.certificate_id && item.certificate_id !== 0 && item.certificate_id !== '0')) return 'Enabled';
+        return 'Disabled';
+      case 'strategy':
+        return (item.meta && item.meta.resolution_method) || item.resolution_method || item.forward_host_strategy || 'auto';
+      case 'npm_id':
+        return item.id ? `#${item.id}` : (item.npm_id ? `#${item.npm_id}` : '');
+      case 'synced':
+        return item.synced_at || item.last_synced || '';
+    }
+  } else if (tableId === 'streams') {
+    switch (colKey) {
+      case 'status':
+        return item.enabled === false ? 'Disabled' : 'Live';
+      case 'incoming_port':
+        return item.incoming_port ? `:${item.incoming_port}` : '';
+      case 'target':
+        return `${item.forwarding_host}:${item.forwarding_port}`;
+      case 'protocols': {
+        const p = [];
+        if (item.tcp) p.push('TCP');
+        if (item.udp) p.push('UDP');
+        return p.join(' + ') || 'None';
+      }
+      case 'source':
+        if (item.source === 'iac') return 'IaC';
+        if (item.source === 'pve') return 'Proxmox';
+        if (item.source === 'lxd') return 'LXD/Incus';
+        return 'Docker';
+      case 'container':
+        return item.container_name || (item.source === 'iac' ? 'IaC Manifest' : 'stream');
+      case 'node':
+        return item.host_id || 'local';
+      case 'npm_id':
+        return item.npm_stream_id ? `#${item.npm_stream_id}` : '';
+      case 'synced':
+        return item.last_synced || '';
+    }
+  } else if (tableId === 'containers') {
+    switch (colKey) {
+      case 'container':
+        return `${item.name || ''} ${item.id || ''}`.trim();
+      case 'node':
+        return item.node_id || 'controller';
+      case 'image':
+        return item.image || '';
+      case 'state':
+        return item.health_status ? `${item.state} (${item.health_status})` : (item.state || 'unknown');
+      case 'discovery':
+        if (item.manual_npm || (item.ignored_reason && item.ignored_reason.includes('NPM portal'))) return 'NPM Portal';
+        if (item.discovered) return 'Discovered';
+        return 'Ignored';
+      case 'domains':
+        return (item.domains && item.domains.length > 0) ? item.domains.join(', ') : 'None';
+      case 'port':
+        return item.port ? String(item.port) : 'None';
+    }
+  }
+  return '';
+}
+
+function getUniqueColumnValues(tableId, colKey) {
+  const data = getTableData(tableId);
+  const counts = new Map();
+  data.forEach(item => {
+    if (colKey === 'domain' && item.domain_names && item.domain_names.length > 0) {
+      item.domain_names.forEach(d => {
+        counts.set(d, (counts.get(d) || 0) + 1);
+      });
+    } else if (colKey === 'domains' && item.domains && item.domains.length > 0) {
+      item.domains.forEach(d => {
+        counts.set(d, (counts.get(d) || 0) + 1);
+      });
+    } else {
+      const val = getColumnValue(tableId, item, colKey);
+      if (val !== undefined && val !== null && val !== '') {
+        counts.set(val, (counts.get(val) || 0) + 1);
+      }
+    }
+  });
+
+  const list = [];
+  counts.forEach((count, val) => {
+    list.push({ value: val, count });
+  });
+
+  list.sort((a, b) => String(a.value).localeCompare(String(b.value), undefined, { numeric: true }));
+  return list;
+}
+
+function matchesColumnFilter(tableId, item, colKey, filterState) {
+  if (!filterState) return true;
+  const rawVal = getColumnValue(tableId, item, colKey);
+  const strVal = String(rawVal).toLowerCase();
+
+  // 1. Text filter (substring match)
+  if (filterState.text && filterState.text.trim()) {
+    const q = filterState.text.trim().toLowerCase();
+    if (!strVal.includes(q)) return false;
+  }
+
+  // 2. Value set filter
+  if (filterState.values && filterState.values.size > 0) {
+    if (colKey === 'domain') {
+      const domains = item.domain_names || [];
+      const hasAny = domains.some(d => filterState.values.has(d));
+      if (!hasAny) return false;
+    } else if (colKey === 'domains') {
+      const domains = item.domains || [];
+      const hasAny = domains.some(d => filterState.values.has(d));
+      if (!hasAny) return false;
+    } else {
+      if (!filterState.values.has(rawVal)) {
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
+function compareRows(tableId, a, b, sortState) {
+  if (!sortState || !sortState.colKey || !sortState.direction) return 0;
+  const valA = getColumnValue(tableId, a, sortState.colKey);
+  const valB = getColumnValue(tableId, b, sortState.colKey);
+
+  const numA = parseFloat(String(valA).replace(/[^0-9.-]+/g, ''));
+  const numB = parseFloat(String(valB).replace(/[^0-9.-]+/g, ''));
+  let res = 0;
+  if (!isNaN(numA) && !isNaN(numB) && String(valA).replace(/[^0-9.-]+/g, '') !== '' && String(valB).replace(/[^0-9.-]+/g, '') !== '') {
+    res = numA - numB;
+  } else {
+    res = String(valA).localeCompare(String(valB), undefined, { numeric: true, sensitivity: 'base' });
+  }
+
+  return sortState.direction === 'desc' ? -res : res;
+}
+
+function triggerTableRender(tableId) {
+  if (tableId === 'proxies') {
+    const s = document.getElementById('proxies-search');
+    renderProxiesTable(s ? s.value.toLowerCase() : '');
+  } else if (tableId === 'streams') {
+    const s = document.getElementById('streams-search');
+    renderStreamsTable(s ? s.value.toLowerCase() : '');
+  } else if (tableId === 'containers') {
+    const s = document.getElementById('containers-search');
+    renderContainersTable(s ? s.value.toLowerCase() : '');
+  }
+}
+
+function updateHeaderIndicators(tableId) {
+  const state = tableFilters[tableId];
+  if (!state) return;
+
+  const ths = document.querySelectorAll(`th[data-table="${tableId}"][data-col]`);
+  ths.forEach(th => {
+    const colKey = th.getAttribute('data-col');
+    const f = state.columnFilters[colKey];
+    const isFiltered = f && ((f.text && f.text.trim()) || (f.values && f.values.size > 0));
+
+    th.classList.toggle('has-active-filter', !!isFiltered);
+    const triggerBtn = th.querySelector('.th-filter-trigger');
+    const badge = th.querySelector('.th-filter-badge');
+    if (triggerBtn) {
+      triggerBtn.classList.toggle('active', !!isFiltered);
+    }
+    if (badge) {
+      badge.style.display = isFiltered ? 'block' : 'none';
+    }
+
+    const sortIcon = th.querySelector('.th-sort-icon');
+    if (sortIcon) {
+      if (state.sort.colKey === colKey && state.sort.direction === 'asc') {
+        sortIcon.textContent = '▲';
+        sortIcon.className = 'th-sort-icon sorted-asc';
+      } else if (state.sort.colKey === colKey && state.sort.direction === 'desc') {
+        sortIcon.textContent = '▼';
+        sortIcon.className = 'th-sort-icon sorted-desc';
+      } else {
+        sortIcon.textContent = '↕';
+        sortIcon.className = 'th-sort-icon';
+      }
+    }
+  });
+}
+
+function renderActiveFiltersBar(tableId) {
+  const bar = document.getElementById(`${tableId}-active-filters`);
+  if (!bar) return;
+  const state = tableFilters[tableId];
+  if (!state) return;
+
+  const activeCols = Object.entries(state.columnFilters).filter(([_, f]) => {
+    return (f.text && f.text.trim()) || (f.values && f.values.size > 0);
+  });
+
+  if (activeCols.length === 0) {
+    bar.style.display = 'none';
+    bar.innerHTML = '';
+    return;
+  }
+
+  bar.style.display = 'flex';
+  bar.innerHTML = `
+    <span class="active-filters-title">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+      </svg>
+      Filtered By:
+    </span>
+  `;
+
+  activeCols.forEach(([colKey, f]) => {
+    const th = document.querySelector(`th[data-table="${tableId}"][data-col="${colKey}"]`);
+    const label = th ? th.getAttribute('data-label') || colKey : colKey;
+
+    let desc = '';
+    if (f.text && f.text.trim()) {
+      desc += `"${f.text.trim()}"`;
+    }
+    if (f.values && f.values.size > 0) {
+      if (desc) desc += ' & ';
+      const arr = Array.from(f.values);
+      desc += arr.slice(0, 2).join(', ');
+      if (arr.length > 2) {
+        desc += ` +${arr.length - 2}`;
+      }
+    }
+
+    const chip = document.createElement('div');
+    chip.className = 'active-filter-chip';
+    chip.innerHTML = `
+      <span><strong>${escapeHtml(label)}:</strong> ${escapeHtml(desc)}</span>
+      <button type="button" class="active-filter-chip-remove" title="Remove filter for ${escapeHtml(label)}">&times;</button>
+    `;
+    chip.querySelector('.active-filter-chip-remove').addEventListener('click', () => {
+      delete state.columnFilters[colKey];
+      updateHeaderIndicators(tableId);
+      triggerTableRender(tableId);
+    });
+    bar.appendChild(chip);
+  });
+
+  const clearAllBtn = document.createElement('button');
+  clearAllBtn.type = 'button';
+  clearAllBtn.className = 'btn-clear-all-filters';
+  clearAllBtn.textContent = 'Clear All Filters';
+  clearAllBtn.addEventListener('click', () => {
+    state.columnFilters = {};
+    updateHeaderIndicators(tableId);
+    triggerTableRender(tableId);
+  });
+  bar.appendChild(clearAllBtn);
+}
+
+function closeColumnFilterPopover() {
+  if (activePopover) {
+    activePopover.remove();
+    activePopover = null;
+  }
+}
+
+function openColumnFilterPopover(th, tableId, colKey, label) {
+  if (activePopover && activePopover.getAttribute('data-popover-col') === `${tableId}:${colKey}`) {
+    closeColumnFilterPopover();
+    return;
+  }
+  closeColumnFilterPopover();
+
+  const state = tableFilters[tableId];
+  if (!state.columnFilters[colKey]) {
+    state.columnFilters[colKey] = { text: '', values: new Set() };
+  }
+  const curFilter = state.columnFilters[colKey];
+  const uniqueValues = getUniqueColumnValues(tableId, colKey);
+
+  const popover = document.createElement('div');
+  popover.className = 'th-filter-popover';
+  popover.setAttribute('data-popover-col', `${tableId}:${colKey}`);
+
+  const draftSelected = new Set(curFilter.values);
+  let draftText = curFilter.text || '';
+
+  popover.innerHTML = `
+    <div class="popover-header">
+      <div class="popover-title">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+        </svg>
+        <span>Filter ${escapeHtml(label)}</span>
+      </div>
+      <button type="button" class="popover-close-btn" title="Close">&times;</button>
+    </div>
+
+    <!-- Quick Sort Row -->
+    <div class="popover-sort-row">
+      <button type="button" class="popover-sort-btn ${state.sort.colKey === colKey && state.sort.direction === 'asc' ? 'active' : ''}" data-sort="asc">
+        ▲ Asc
+      </button>
+      <button type="button" class="popover-sort-btn ${state.sort.colKey === colKey && state.sort.direction === 'desc' ? 'active' : ''}" data-sort="desc">
+        ▼ Desc
+      </button>
+      <button type="button" class="popover-sort-btn" data-sort="none">
+        ⟲ Clear Sort
+      </button>
+    </div>
+
+    <!-- Search in Column -->
+    <div class="popover-search-wrap">
+      <svg class="popover-search-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="11" cy="11" r="8"></circle>
+        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+      </svg>
+      <input type="text" class="popover-search-input" placeholder="Search ${escapeHtml(label)}..." value="${escapeHtml(draftText)}" />
+    </div>
+
+    <!-- Quick Check Links -->
+    <div class="popover-quick-links">
+      <button type="button" class="popover-link-btn" id="quick-select-all">Select All</button>
+      <button type="button" class="popover-link-btn" id="quick-clear-all">Clear</button>
+    </div>
+
+    <!-- Values List -->
+    <div class="popover-values-list" id="popover-val-container">
+      ${uniqueValues.length === 0 ? '<div style="color:var(--text-muted);font-size:0.75rem;padding:0.4rem;">No values available</div>' : ''}
+    </div>
+
+    <!-- Footer Actions -->
+    <div class="popover-footer">
+      <button type="button" class="popover-btn popover-btn-apply">Apply Filter</button>
+      <button type="button" class="popover-btn popover-btn-reset">Reset</button>
+    </div>
+  `;
+
+  const valContainer = popover.querySelector('#popover-val-container');
+  function renderChecklist(searchTerm = '') {
+    valContainer.innerHTML = '';
+    const term = searchTerm.toLowerCase();
+    const visibleValues = uniqueValues.filter(uv => String(uv.value).toLowerCase().includes(term));
+
+    if (visibleValues.length === 0) {
+      valContainer.innerHTML = '<div style="color:var(--text-muted);font-size:0.75rem;padding:0.4rem;">No matching values</div>';
+      return;
+    }
+
+    visibleValues.forEach(uv => {
+      const itemEl = document.createElement('label');
+      itemEl.className = 'popover-val-item';
+
+      const isChecked = draftSelected.size === 0 || draftSelected.has(uv.value);
+
+      itemEl.innerHTML = `
+        <div class="popover-val-left">
+          <input type="checkbox" value="${escapeHtml(String(uv.value))}" ${isChecked ? 'checked' : ''} />
+          <span class="popover-val-text" title="${escapeHtml(String(uv.value))}">${escapeHtml(String(uv.value))}</span>
+        </div>
+        <span class="popover-val-count">${uv.count}</span>
+      `;
+
+      const cb = itemEl.querySelector('input');
+      cb.addEventListener('change', () => {
+        if (cb.checked) {
+          draftSelected.add(uv.value);
+        } else {
+          if (draftSelected.size === 0) {
+            uniqueValues.forEach(v => draftSelected.add(v.value));
+          }
+          draftSelected.delete(uv.value);
+        }
+      });
+
+      valContainer.appendChild(itemEl);
+    });
+  }
+
+  renderChecklist();
+
+  const searchInput = popover.querySelector('.popover-search-input');
+  searchInput.addEventListener('input', (e) => {
+    draftText = e.target.value;
+    renderChecklist(draftText);
+  });
+
+  popover.querySelector('#quick-select-all').addEventListener('click', () => {
+    draftSelected.clear();
+    popover.querySelectorAll('#popover-val-container input[type="checkbox"]').forEach(cb => {
+      cb.checked = true;
+    });
+  });
+
+  popover.querySelector('#quick-clear-all').addEventListener('click', () => {
+    draftSelected.clear();
+    uniqueValues.forEach(v => draftSelected.add('__NONE_MATCHING__'));
+    popover.querySelectorAll('#popover-val-container input[type="checkbox"]').forEach(cb => {
+      cb.checked = false;
+    });
+  });
+
+  popover.querySelectorAll('.popover-sort-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const dir = btn.getAttribute('data-sort');
+      if (dir === 'none') {
+        state.sort = { colKey: null, direction: null };
+      } else {
+        state.sort = { colKey, direction: dir };
+      }
+      triggerTableRender(tableId);
+      updateHeaderIndicators(tableId);
+      closeColumnFilterPopover();
+    });
+  });
+
+  popover.querySelector('.popover-btn-apply').addEventListener('click', () => {
+    if (draftSelected.size >= uniqueValues.length || draftSelected.size === 0) {
+      curFilter.values = new Set();
+    } else {
+      curFilter.values = new Set(draftSelected);
+    }
+    curFilter.text = draftText;
+
+    if (!curFilter.text && curFilter.values.size === 0) {
+      delete state.columnFilters[colKey];
+    }
+
+    triggerTableRender(tableId);
+    updateHeaderIndicators(tableId);
+    closeColumnFilterPopover();
+  });
+
+  popover.querySelector('.popover-btn-reset').addEventListener('click', () => {
+    delete state.columnFilters[colKey];
+    triggerTableRender(tableId);
+    updateHeaderIndicators(tableId);
+    closeColumnFilterPopover();
+  });
+
+  popover.querySelector('.popover-close-btn').addEventListener('click', closeColumnFilterPopover);
+
+  document.body.appendChild(popover);
+  activePopover = popover;
+
+  const rect = th.getBoundingClientRect();
+  let top = rect.bottom + 6;
+  let left = rect.left;
+
+  if (left + 280 > window.innerWidth) {
+    left = Math.max(10, window.innerWidth - 290);
+  }
+  if (top + popover.offsetHeight > window.innerHeight) {
+    top = Math.max(10, rect.top - popover.offsetHeight - 6);
+  }
+
+  popover.style.top = `${top}px`;
+  popover.style.left = `${left}px`;
+}
+
+document.addEventListener('click', (e) => {
+  if (activePopover) {
+    if (!activePopover.contains(e.target) && !e.target.closest('.th-filter-trigger')) {
+      closeColumnFilterPopover();
+    }
+  }
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && activePopover) {
+    closeColumnFilterPopover();
+  }
+});
+
+window.addEventListener('resize', closeColumnFilterPopover);
+
+function initTableHeaders() {
+  const ths = document.querySelectorAll('th[data-table][data-col]');
+  ths.forEach(th => {
+    const tableId = th.getAttribute('data-table');
+    const colKey = th.getAttribute('data-col');
+    const label = th.getAttribute('data-label') || th.textContent.trim();
+
+    th.classList.add('filterable');
+    th.innerHTML = `
+      <div class="th-content-wrapper">
+        <button type="button" class="th-label-btn" title="Click to sort by ${escapeHtml(label)}">
+          <span>${escapeHtml(label)}</span>
+          <span class="th-sort-icon">↕</span>
+        </button>
+        <div class="th-icons-group">
+          <button type="button" class="th-filter-trigger" title="Filter by ${escapeHtml(label)}">
+            <svg class="th-filter-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+            </svg>
+            <span class="th-filter-badge" style="display:none;"></span>
+          </button>
+        </div>
+      </div>
+    `;
+
+    const labelBtn = th.querySelector('.th-label-btn');
+    labelBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const state = tableFilters[tableId];
+      if (state.sort.colKey === colKey) {
+        if (state.sort.direction === 'asc') {
+          state.sort.direction = 'desc';
+        } else {
+          state.sort = { colKey: null, direction: null };
+        }
+      } else {
+        state.sort = { colKey, direction: 'asc' };
+      }
+      updateHeaderIndicators(tableId);
+      triggerTableRender(tableId);
+    });
+
+    const filterBtn = th.querySelector('.th-filter-trigger');
+    filterBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openColumnFilterPopover(th, tableId, colKey, label);
+    });
+  });
 }
 
 // Search and Filter controls
@@ -481,10 +1048,22 @@ function renderStreamsTable(filterText = '') {
     if (selectedStreamsNode !== 'all' && s.host_id && s.host_id.toLowerCase() !== selectedStreamsNode.toLowerCase()) {
       return false;
     }
-    if (!filterText) return true;
-    const searchStr = `${s.incoming_port} ${s.forwarding_host}:${s.forwarding_port} ${s.container_name || ''} ${s.host_id || ''} ${s.tcp ? 'tcp' : ''} ${s.udp ? 'udp' : ''}`.toLowerCase();
-    return searchStr.includes(filterText);
+    if (filterText) {
+      const searchStr = `${s.incoming_port} ${s.forwarding_host}:${s.forwarding_port} ${s.container_name || ''} ${s.host_id || ''} ${s.tcp ? 'tcp' : ''} ${s.udp ? 'udp' : ''}`.toLowerCase();
+      if (!searchStr.includes(filterText)) return false;
+    }
+    for (const [colKey, filterState] of Object.entries(tableFilters.streams.columnFilters)) {
+      if (!matchesColumnFilter('streams', s, colKey, filterState)) return false;
+    }
+    return true;
   });
+
+  if (tableFilters.streams.sort.colKey && tableFilters.streams.sort.direction) {
+    filtered.sort((a, b) => compareRows('streams', a, b, tableFilters.streams.sort));
+  }
+
+  renderActiveFiltersBar('streams');
+  updateHeaderIndicators('streams');
 
   if (filtered.length === 0) {
     if (emptyState) emptyState.style.display = 'block';
@@ -549,10 +1128,22 @@ function renderProxiesTable(filterText = '') {
     if (selectedProxiesNode !== 'all' && p.host_id && p.host_id.toLowerCase() !== selectedProxiesNode.toLowerCase()) {
       return false;
     }
-    if (!filterText) return true;
-    const searchStr = `${p.domain_names.join(' ')} ${p.container_name} ${p.forward_host}:${p.forward_port} ${p.host_id || ''}`.toLowerCase();
-    return searchStr.includes(filterText);
+    if (filterText) {
+      const searchStr = `${p.domain_names.join(' ')} ${p.container_name} ${p.forward_host}:${p.forward_port} ${p.host_id || ''}`.toLowerCase();
+      if (!searchStr.includes(filterText)) return false;
+    }
+    for (const [colKey, filterState] of Object.entries(tableFilters.proxies.columnFilters)) {
+      if (!matchesColumnFilter('proxies', p, colKey, filterState)) return false;
+    }
+    return true;
   });
+
+  if (tableFilters.proxies.sort.colKey && tableFilters.proxies.sort.direction) {
+    filtered.sort((a, b) => compareRows('proxies', a, b, tableFilters.proxies.sort));
+  }
+
+  renderActiveFiltersBar('proxies');
+  updateHeaderIndicators('proxies');
 
   if (filtered.length === 0) {
     emptyState.style.display = 'block';
@@ -709,10 +1300,22 @@ function renderContainersTable(filterText = '') {
     if (selectedContainersNode !== 'all' && c.node_id && c.node_id.toLowerCase() !== selectedContainersNode.toLowerCase()) {
       return false;
     }
-    if (!filterText) return true;
-    const search = `${c.name} ${c.image} ${c.id} ${c.node_id || ''}`.toLowerCase();
-    return search.includes(filterText);
+    if (filterText) {
+      const search = `${c.name} ${c.image} ${c.id} ${c.node_id || ''}`.toLowerCase();
+      if (!search.includes(filterText)) return false;
+    }
+    for (const [colKey, filterState] of Object.entries(tableFilters.containers.columnFilters)) {
+      if (!matchesColumnFilter('containers', c, colKey, filterState)) return false;
+    }
+    return true;
   });
+
+  if (tableFilters.containers.sort.colKey && tableFilters.containers.sort.direction) {
+    filtered.sort((a, b) => compareRows('containers', a, b, tableFilters.containers.sort));
+  }
+
+  renderActiveFiltersBar('containers');
+  updateHeaderIndicators('containers');
 
   if (filtered.length === 0) {
     const tr = document.createElement('tr');
