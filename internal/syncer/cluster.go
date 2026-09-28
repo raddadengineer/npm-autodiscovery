@@ -228,9 +228,18 @@ func (s *Syncer) GetClusterNodes() []ClusterNodeInfo {
 	}
 	s.mu.RUnlock()
 
+	localNodeID := s.cfg.HostID
+	if strings.TrimSpace(localNodeID) == "" {
+		localNodeID = "controller-main"
+	}
+	localNodeIP := s.cfg.HostIP
+	if strings.TrimSpace(localNodeIP) == "" {
+		localNodeIP = "127.0.0.1"
+	}
+
 	localNode := ClusterNodeInfo{
-		NodeID:          s.cfg.HostID,
-		NodeIP:          s.cfg.HostIP,
+		NodeID:          localNodeID,
+		NodeIP:          localNodeIP,
 		IsController:    true,
 		Status:          "online",
 		LastHeartbeat:   time.Now(),

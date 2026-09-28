@@ -1045,83 +1045,90 @@ function renderClusterNodes(filterText = '') {
   if (emptyState) emptyState.style.display = 'none';
 
   filtered.forEach(node => {
-    const card = document.createElement('div');
-    card.className = 'node-card glass-panel';
-    card.setAttribute('data-node-id', node.node_id);
+    try {
+      const card = document.createElement('div');
+      card.className = 'node-card glass-panel';
+      const nodeId = node.node_id || (node.is_controller ? 'controller-main' : 'worker');
+      const nodeIp = node.node_ip || '127.0.0.1';
+      card.setAttribute('data-node-id', nodeId);
 
-    const isOnline = node.status === 'online';
-    const statusDot = isOnline 
-      ? '<span class="status-dot ping-dot connected"></span>' 
-      : '<span class="status-dot ping-dot disconnected"></span>';
-    const statusText = isOnline 
-      ? '<span class="badge badge-emerald">Online</span>' 
-      : '<span class="badge badge-rose">Offline</span>';
+      const isOnline = node.status === 'online';
+      const statusDot = isOnline 
+        ? '<span class="status-dot ping-dot connected"></span>' 
+        : '<span class="status-dot ping-dot disconnected"></span>';
+      const statusText = isOnline 
+        ? '<span class="badge badge-emerald">Online</span>' 
+        : '<span class="badge badge-rose">Offline</span>';
 
-    const roleBadge = node.is_controller 
-      ? '<span class="badge badge-cyan" style="font-size:0.72rem;">👑 Central Controller</span>' 
-      : '<span class="badge badge-violet" style="font-size:0.72rem;">📡 Remote Worker</span>';
+      const roleBadge = node.is_controller 
+        ? '<span class="badge badge-cyan" style="font-size:0.72rem;">👑 Central Controller</span>' 
+        : '<span class="badge badge-violet" style="font-size:0.72rem;">📡 Remote Worker</span>';
 
-    const lastHeartbeatTime = node.last_heartbeat 
-      ? formatTimeAgo(new Date(node.last_heartbeat)) 
-      : 'Just now';
+      let lastHeartbeatTime = 'Just now';
+      if (node.last_heartbeat) {
+        lastHeartbeatTime = formatTimeAgo(new Date(node.last_heartbeat));
+      }
 
-    const uptimeStr = formatUptime(node.uptime_seconds || 0);
+      const uptimeStr = formatUptime(node.uptime_seconds || 0);
 
-    card.innerHTML = `
-      <div class="node-card-header">
-        <div class="node-card-title-group">
-          ${statusDot}
-          <span class="node-card-title">${escapeHtml(node.node_id)}</span>
+      card.innerHTML = `
+        <div class="node-card-header">
+          <div class="node-card-title-group">
+            ${statusDot}
+            <span class="node-card-title">${escapeHtml(nodeId)}</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:0.5rem;">
+            ${roleBadge}
+            ${statusText}
+          </div>
         </div>
-        <div style="display:flex; align-items:center; gap:0.5rem;">
-          ${roleBadge}
-          ${statusText}
-        </div>
-      </div>
 
-      <div class="node-meta-grid">
-        <div class="node-meta-item">
-          <span class="node-meta-label">Reachable IP / Host</span>
-          <span class="node-meta-val"><code>${escapeHtml(node.node_ip || '127.0.0.1')}</code></span>
+        <div class="node-meta-grid">
+          <div class="node-meta-item">
+            <span class="node-meta-label">Reachable IP / Host</span>
+            <span class="node-meta-val"><code>${escapeHtml(nodeIp)}</code></span>
+          </div>
+          <div class="node-meta-item">
+            <span class="node-meta-label">Last Heartbeat</span>
+            <span class="node-meta-val">${escapeHtml(lastHeartbeatTime)}</span>
+          </div>
+          <div class="node-meta-item">
+            <span class="node-meta-label">Discovered Containers</span>
+            <span class="node-meta-val" style="color:var(--accent-cyan); font-weight:700;">${node.container_count || 0}</span>
+          </div>
+          <div class="node-meta-item">
+            <span class="node-meta-label">Provisioned Proxies</span>
+            <span class="node-meta-val" style="color:var(--accent-emerald); font-weight:700;">${node.proxy_count || 0}</span>
+          </div>
         </div>
-        <div class="node-meta-item">
-          <span class="node-meta-label">Last Heartbeat</span>
-          <span class="node-meta-val">${escapeHtml(lastHeartbeatTime)}</span>
-        </div>
-        <div class="node-meta-item">
-          <span class="node-meta-label">Discovered Containers</span>
-          <span class="node-meta-val" style="color:var(--accent-cyan); font-weight:700;">${node.container_count || 0}</span>
-        </div>
-        <div class="node-meta-item">
-          <span class="node-meta-label">Provisioned Proxies</span>
-          <span class="node-meta-val" style="color:var(--accent-emerald); font-weight:700;">${node.proxy_count || 0}</span>
-        </div>
-      </div>
 
-      <div class="node-engines-list">
-        <div class="node-engine-row">
-          <span class="text-muted">🐳 Docker Engine:</span>
-          <span>${node.docker_connected ? `<span style="color:#10b981; font-weight:600;">Connected</span> <span style="font-size:0.75rem; color:var(--text-muted); font-family:var(--font-mono);">(${escapeHtml(node.docker_version || 'active')})</span>` : '<span style="color:#f43f5e;">Disconnected</span>'}</span>
+        <div class="node-engines-list">
+          <div class="node-engine-row">
+            <span class="text-muted">🐳 Docker Engine:</span>
+            <span>${node.docker_connected ? `<span style="color:#10b981; font-weight:600;">Connected</span> <span style="font-size:0.75rem; color:var(--text-muted); font-family:var(--font-mono);">(${escapeHtml(node.docker_version || 'active')})</span>` : '<span style="color:#f43f5e;">Disconnected</span>'}</span>
+          </div>
+          <div class="node-engine-row">
+            <span class="text-muted">⚡ Proxmox VE:</span>
+            <span>${node.pve_connected ? '<span style="color:#10b981; font-weight:600;">Active</span>' : '<span style="color:var(--text-muted);">Disabled</span>'}</span>
+          </div>
+          <div class="node-engine-row">
+            <span class="text-muted">🐧 LXD / Incus:</span>
+            <span>${node.lxd_connected ? '<span style="color:#10b981; font-weight:600;">Active</span>' : '<span style="color:var(--text-muted);">Disabled</span>'}</span>
+          </div>
         </div>
-        <div class="node-engine-row">
-          <span class="text-muted">⚡ Proxmox VE:</span>
-          <span>${node.pve_connected ? '<span style="color:#10b981; font-weight:600;">Active</span>' : '<span style="color:var(--text-muted);">Disabled</span>'}</span>
-        </div>
-        <div class="node-engine-row">
-          <span class="text-muted">🐧 LXD / Incus:</span>
-          <span>${node.lxd_connected ? '<span style="color:#10b981; font-weight:600;">Active</span>' : '<span style="color:var(--text-muted);">Disabled</span>'}</span>
-        </div>
-      </div>
 
-      <div class="node-card-footer">
-        <span style="font-size:0.75rem; color:var(--text-muted);">Uptime: ${escapeHtml(uptimeStr)}</span>
-        <button class="btn btn-secondary btn-sm" onclick="filterContainersByNode('${escapeHtml(node.node_id)}')">
-          Inspect Containers
-        </button>
-      </div>
-    `;
+        <div class="node-card-footer">
+          <span style="font-size:0.75rem; color:var(--text-muted);">Uptime: ${escapeHtml(uptimeStr)}</span>
+          <button class="btn btn-secondary btn-sm" onclick="filterContainersByNode('${escapeHtml(nodeId)}')">
+            Inspect Containers
+          </button>
+        </div>
+      `;
 
-    grid.appendChild(card);
+      grid.appendChild(card);
+    } catch (err) {
+      console.error('Failed to render cluster node card:', err, node);
+    }
   });
 }
 
@@ -1134,13 +1141,27 @@ function filterContainersByNode(nodeId) {
 }
 
 function formatTimeAgo(date) {
-  const seconds = Math.floor((new Date() - date) / 1000);
+  if (!date || isNaN(date.getTime())) return 'Just now';
+  const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
   if (seconds < 5) return 'Just now';
   if (seconds < 60) return `${seconds}s ago`;
   const minutes = Math.floor(seconds / 60);
   if (minutes < 60) return `${minutes}m ago`;
   const hours = Math.floor(minutes / 60);
-  return `${hours}h ago`;
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
+function formatUptime(seconds) {
+  seconds = Math.max(0, Math.floor(seconds || 0));
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ${seconds % 60}s`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ${minutes % 60}m`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ${hours % 24}h`;
 }
 
 // ==============================================================================
