@@ -101,6 +101,7 @@ type ContainerStatusView struct {
 	Status        string            `json:"status"`
 	HealthStatus  string            `json:"health_status,omitempty"`
 	Discovered    bool              `json:"discovered"`
+	ManualNPM     bool              `json:"manual_npm,omitempty"`
 	IgnoredReason string            `json:"ignored_reason,omitempty"`
 	Domains       []string          `json:"domains,omitempty"`
 	Port          int               `json:"port,omitempty"`
@@ -166,6 +167,7 @@ type Syncer struct {
 
 	mu             sync.RWMutex
 	trackedProxies map[string]*ManagedProxy       // Key: primary domain or container ID
+	manualProxies  map[int]*ManagedProxy          // Key: NPM host ID (configured via NPM portal)
 	trackedStreams map[int]*ManagedStream         // Key: incoming_port
 	pendingHealth  map[string]*PendingHealthCheck // Key: container ID
 	pveContainers  []pve.LXCContainerSummary
@@ -194,6 +196,7 @@ func NewSyncer(cfg *config.Config, dClient *docker.Client, nClient *npm.Client) 
 		dockerClient:      dClient,
 		npmClient:         nClient,
 		trackedProxies:    make(map[string]*ManagedProxy),
+		manualProxies:     make(map[int]*ManagedProxy),
 		trackedStreams:    make(map[int]*ManagedStream),
 		pendingHealth:     make(map[string]*PendingHealthCheck),
 		logEvents:         make([]LogEvent, 0, MaxLogsHistory),
@@ -1359,7 +1362,8 @@ func (s *Syncer) performFullSync(ctx context.Context, triggerSource string) {
 	}
 	s.reconcileStreams(ctx, allDockerStreams, allIaCStreams, allPVEStreams, allLXDStreams)
 
-	// 6. Orphan Proxy Host Cleanup
+	// 6. Orphan Proxy Host Cleanup & Manual NPM Proxy Sync
+	s.syncManualProxiesFromNPM(ctx)
 	existingHosts, err := s.npmClient.GetProxyHosts(ctx)
 	if err == nil {
 		for _, host := range existingHosts {
@@ -2031,11 +2035,111 @@ func (s *Syncer) removeTrackedProxy(containerID string, domainNames []string) {
 	}
 }
 
-// GetTrackedProxies returns a slice of currently tracked auto-discovered proxies.
+// syncManualProxiesFromNPM queries NPM for proxy hosts that are unmanaged (configured manually in the NPM portal)
+// and updates the local manualProxies registry and container linkages.
+func (s *Syncer) syncManualProxiesFromNPM(ctx context.Context) {
+	if s.npmClient == nil {
+		return
+	}
+
+	existingHosts, err := s.npmClient.GetProxyHosts(ctx)
+	if err != nil {
+		return
+	}
+
+	// Fetch all local containers for correlation (including stopped ones)
+	var localContainers []docker.ContainerSummary
+	if s.dockerClient != nil {
+		if cList, err := s.dockerClient.ListContainers(ctx, true); err == nil {
+			localContainers = cList
+		}
+	}
+
+	newManual := make(map[int]*ManagedProxy)
+	for _, host := range existingHosts {
+		isManaged, _, _, _, _, _ := getManagedInfo(&host)
+		if isManaged {
+			continue
+		}
+
+		sslEnabled := host.CertificateID != nil && fmt.Sprintf("%v", host.CertificateID) != "0" && fmt.Sprintf("%v", host.CertificateID) != ""
+		status := "active"
+		if !bool(host.Enabled) {
+			status = "disabled"
+		}
+
+		matchedCID := ""
+		matchedCName := ""
+		matchedImage := ""
+		resMethod := "NPM Portal (Manual)"
+
+		for _, c := range localContainers {
+			cNameClean := ""
+			if len(c.Names) > 0 {
+				cNameClean = strings.TrimPrefix(c.Names[0], "/")
+			}
+			isMatch := false
+			if cNameClean != "" && strings.EqualFold(host.ForwardHost, cNameClean) {
+				isMatch = true
+			} else if strings.HasPrefix(c.ID, host.ForwardHost) || (len(host.ForwardHost) >= 12 && strings.HasPrefix(host.ForwardHost, c.ID[:min(12, len(c.ID))])) {
+				isMatch = true
+			}
+			if isMatch {
+				matchedCID = c.ID
+				matchedCName = cNameClean
+				matchedImage = c.Image
+				resMethod = fmt.Sprintf("NPM Portal (Manual - Linked to '%s')", cNameClean)
+				break
+			}
+		}
+
+		if matchedCName == "" {
+			matchedCName = "npm-portal"
+			matchedImage = "manual:npm-portal"
+		}
+
+		newManual[host.ID] = &ManagedProxy{
+			NPMHostID:        host.ID,
+			HostID:           s.cfg.HostID,
+			ContainerID:      matchedCID,
+			ContainerName:    matchedCName,
+			Image:            matchedImage,
+			DomainNames:      host.DomainNames,
+			ForwardScheme:    host.ForwardScheme,
+			ForwardHost:      host.ForwardHost,
+			ForwardPort:      host.ForwardPort,
+			ResolutionMethod: resMethod,
+			SSLEnabled:       sslEnabled,
+			SSLForced:        bool(host.SSLForced),
+			CertificateID:    host.CertificateID,
+			Websocket:        bool(host.AllowWebsocketUpgrade),
+			BlockExploits:    bool(host.BlockExploits),
+			Locations:        host.Locations,
+			Source:           "manual",
+			Status:           status,
+			LastSynced:       time.Now(),
+		}
+	}
+
+	s.mu.Lock()
+	s.manualProxies = newManual
+	s.mu.Unlock()
+}
+
+// GetTrackedProxies returns a slice of currently tracked auto-discovered proxies and manual NPM portal proxies.
 func (s *Syncer) GetTrackedProxies() []*ManagedProxy {
 	s.mu.RLock()
-	proxies := make([]*ManagedProxy, 0, len(s.trackedProxies))
+	if len(s.manualProxies) == 0 && s.npmClient != nil {
+		s.mu.RUnlock()
+		s.syncManualProxiesFromNPM(context.Background())
+		s.mu.RLock()
+	}
+
+	proxies := make([]*ManagedProxy, 0, len(s.trackedProxies)+len(s.manualProxies))
 	for _, p := range s.trackedProxies {
+		proxies = append(proxies, p)
+	}
+	for _, p := range s.manualProxies {
 		proxies = append(proxies, p)
 	}
 	s.mu.RUnlock()
@@ -2071,7 +2175,7 @@ func (s *Syncer) GetStatusOverview(ctx context.Context) StatusOverview {
 		npmConn, _, npmURL = s.npmClient.Status()
 	}
 
-	activeCount := len(s.trackedProxies)
+	activeCount := len(s.trackedProxies) + len(s.manualProxies)
 	activeStreamsCount := len(s.trackedStreams)
 	totEvents := s.totalEvents
 	lastSync := s.lastFullSync
@@ -2207,6 +2311,7 @@ func (s *Syncer) getLocalContainersView(ctx context.Context) ([]ContainerStatusV
 
 				proxyCfg, shouldProxy, parseErr := ParseContainerLabels(inspect, s.cfg)
 				discovered := shouldProxy && proxyCfg != nil
+				manualNPM := false
 				ignoredReason := ""
 
 				var domains []string
@@ -2218,6 +2323,66 @@ func (s *Syncer) getLocalContainersView(ctx context.Context) ([]ContainerStatusV
 					ignoredReason = parseErr.Error()
 				} else {
 					ignoredReason = "Missing discovery labels ('npm.frontend.domain')"
+				}
+
+				// Check if this container is manually configured via NPM Portal
+				if !discovered {
+					s.mu.RLock()
+					if len(s.manualProxies) == 0 && s.npmClient != nil {
+						s.mu.RUnlock()
+						s.syncManualProxiesFromNPM(ctx)
+						s.mu.RLock()
+					}
+
+					var manualDomains []string
+					manualPort := 0
+					hasManual := false
+					for _, mp := range s.manualProxies {
+						isMatch := false
+						if mp.ContainerID != "" && (mp.ContainerID == c.ID || strings.HasPrefix(c.ID, mp.ContainerID)) {
+							isMatch = true
+						} else if name != "" && strings.EqualFold(mp.ForwardHost, name) {
+							isMatch = true
+						} else if mp.ContainerName != "" && name != "" && strings.EqualFold(mp.ContainerName, name) {
+							isMatch = true
+						} else {
+							if inspect.NetworkSettings.IPAddress != "" && mp.ForwardHost == inspect.NetworkSettings.IPAddress {
+								isMatch = true
+							}
+							if !isMatch && (mp.ForwardHost == "localhost" || mp.ForwardHost == "127.0.0.1" || mp.ForwardHost == s.cfg.HostIP) {
+								for _, bindings := range inspect.NetworkSettings.Ports {
+									for _, b := range bindings {
+										if hp, err := strconv.Atoi(b.HostPort); err == nil && hp == mp.ForwardPort {
+											isMatch = true
+											break
+										}
+									}
+									if isMatch {
+										break
+									}
+								}
+							}
+						}
+
+						if isMatch {
+							hasManual = true
+							manualDomains = append(manualDomains, mp.DomainNames...)
+							if mp.ForwardPort > 0 && manualPort == 0 {
+								manualPort = mp.ForwardPort
+							}
+						}
+					}
+					s.mu.RUnlock()
+
+					if hasManual {
+						discovered = true
+						manualNPM = true
+						ignoredReason = "Manually configured from NPM portal"
+						domains = manualDomains
+						if port == 0 {
+							port = manualPort
+						}
+					}
 				}
 
 				healthStatus := "none"
@@ -2234,6 +2399,7 @@ func (s *Syncer) getLocalContainersView(ctx context.Context) ([]ContainerStatusV
 					Status:        c.Status,
 					HealthStatus:  healthStatus,
 					Discovered:    discovered,
+					ManualNPM:     manualNPM,
 					IgnoredReason: ignoredReason,
 					Domains:       domains,
 					Port:          port,

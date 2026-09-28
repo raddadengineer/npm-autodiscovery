@@ -59,10 +59,41 @@ func (s *Server) Start() error {
 	// Prometheus Metrics Endpoint (Phase 1)
 	mux.HandleFunc("/metrics", s.handleMetrics)
 
-	// Static Web Dashboard files
+	// Static Web Dashboard files & SPA client routing fallback
 	if s.webFS != nil {
 		fileServer := http.FileServer(http.FS(s.webFS))
-		mux.Handle("/", fileServer)
+		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			// Don't intercept API routes or Prometheus metrics
+			if strings.HasPrefix(r.URL.Path, "/api/") || r.URL.Path == "/metrics" {
+				http.NotFound(w, r)
+				return
+			}
+
+			// Clean relative path in webFS
+			cleanPath := strings.TrimPrefix(r.URL.Path, "/")
+			if cleanPath == "" {
+				fileServer.ServeHTTP(w, r)
+				return
+			}
+
+			// If the static asset exists directly (e.g. css/style.css, js/app.js, favicon), serve it
+			if f, err := s.webFS.Open(cleanPath); err == nil {
+				f.Close()
+				fileServer.ServeHTTP(w, r)
+				return
+			}
+
+			// Otherwise, fall back to index.html for client-side SPA routes (e.g. /containers, /proxies, /streams, /cluster, /events, /docs)
+			indexBytes, err := fs.ReadFile(s.webFS, "index.html")
+			if err != nil {
+				fileServer.ServeHTTP(w, r)
+				return
+			}
+
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.WriteHeader(http.StatusOK)
+			w.Write(indexBytes)
+		})
 	} else {
 		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "text/plain")

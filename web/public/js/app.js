@@ -11,8 +11,99 @@ let selectedEventsNode = 'all';
 let currentLogFilter = 'all';
 let autoScrollLogs = true;
 
+// Client-Side Route Map
+const TAB_ROUTES = {
+  'proxies-view': '/proxies',
+  'streams-view': '/streams',
+  'events-view': '/events',
+  'containers-view': '/containers',
+  'cluster-view': '/cluster',
+  'docs-view': '/docs'
+};
+
+const ROUTE_TABS = {
+  '/': 'proxies-view',
+  '/proxies': 'proxies-view',
+  '/streams': 'streams-view',
+  '/events': 'events-view',
+  '/logs': 'events-view',
+  '/audit': 'events-view',
+  '/containers': 'containers-view',
+  '/cluster': 'cluster-view',
+  '/docs': 'docs-view'
+};
+
+const TAB_TITLES = {
+  'proxies-view': 'Active Proxies | NPM Auto-Discovery',
+  'streams-view': 'L4 Streams | NPM Auto-Discovery',
+  'events-view': 'Audit Log | NPM Auto-Discovery',
+  'containers-view': 'All Containers | NPM Auto-Discovery',
+  'cluster-view': 'Cluster Nodes | NPM Auto-Discovery',
+  'docs-view': 'Documentation & Setup | NPM Auto-Discovery'
+};
+
+function getTabFromUrl() {
+  // Check hash first (e.g. #/containers or #containers)
+  const hash = window.location.hash.replace(/^#\/?/, '').trim();
+  if (hash) {
+    const hashClean = '/' + hash.replace(/\/+$/, '');
+    if (ROUTE_TABS[hashClean]) return { tab: ROUTE_TABS[hashClean], subtab: null };
+    if (hashClean.startsWith('/docs')) {
+      const parts = hashClean.split('/');
+      return { tab: 'docs-view', subtab: parts[2] ? `guide-${parts[2]}` : null };
+    }
+  }
+
+  // Check pathname
+  const path = window.location.pathname.replace(/\/+$/, '') || '/';
+  if (ROUTE_TABS[path]) return { tab: ROUTE_TABS[path], subtab: null };
+  if (path.startsWith('/docs')) {
+    const parts = path.split('/');
+    return { tab: 'docs-view', subtab: parts[2] ? `guide-${parts[2]}` : null };
+  }
+
+  return { tab: 'proxies-view', subtab: null };
+}
+
+function initRouter() {
+  const { tab, subtab } = getTabFromUrl();
+  switchTab(tab, false);
+
+  if (tab === 'docs-view' && subtab) {
+    activateDocsSubtab(subtab);
+  }
+
+  window.addEventListener('popstate', () => {
+    const routeInfo = getTabFromUrl();
+    switchTab(routeInfo.tab, false);
+    if (routeInfo.tab === 'docs-view' && routeInfo.subtab) {
+      activateDocsSubtab(routeInfo.subtab);
+    }
+  });
+
+  window.addEventListener('hashchange', () => {
+    const routeInfo = getTabFromUrl();
+    switchTab(routeInfo.tab, false);
+    if (routeInfo.tab === 'docs-view' && routeInfo.subtab) {
+      activateDocsSubtab(routeInfo.subtab);
+    }
+  });
+}
+
+function activateDocsSubtab(guideId) {
+  const btn = document.querySelector(`.docs-subtab-btn[data-guide="${guideId}"]`);
+  if (btn) {
+    document.querySelectorAll('.docs-subtab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelectorAll('.docs-guide-pane').forEach(pane => {
+      pane.classList.toggle('active', pane.id === guideId);
+    });
+  }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   initTabs();
+  initRouter();
   initSearchAndFilters();
   initSyncButton();
   initEventStream();
@@ -35,12 +126,12 @@ function initTabs() {
   document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const targetTab = btn.getAttribute('data-tab');
-      switchTab(targetTab);
+      switchTab(targetTab, true);
     });
   });
 }
 
-function switchTab(tabId) {
+function switchTab(tabId, updateUrl = true) {
   activeTab = tabId;
   document.querySelectorAll('.tab-btn').forEach(b => {
     b.classList.toggle('active', b.getAttribute('data-tab') === tabId);
@@ -49,12 +140,26 @@ function switchTab(tabId) {
     content.classList.toggle('active', content.id === tabId);
   });
 
+  if (updateUrl) {
+    const targetRoute = TAB_ROUTES[tabId] || '/proxies';
+    const currentPath = window.location.pathname.replace(/\/+$/, '') || '/';
+    if (currentPath !== targetRoute && window.location.hash.replace(/^#\/?/, '/') !== targetRoute) {
+      history.pushState({ tab: tabId }, '', targetRoute);
+    }
+  }
+
+  if (TAB_TITLES[tabId]) {
+    document.title = TAB_TITLES[tabId];
+  }
+
   if (tabId === 'containers-view') {
     fetchContainers();
   } else if (tabId === 'streams-view') {
     fetchStreams();
   } else if (tabId === 'cluster-view') {
     fetchClusterNodes();
+  } else if (tabId === 'proxies-view') {
+    fetchProxies();
   }
 }
 
@@ -488,6 +593,30 @@ function renderProxiesTable(filterText = '') {
       sourceBadge = `<span class="badge" style="background: rgba(249, 115, 22, 0.15); color: #f97316; font-size: 0.7rem;" title="Proxmox VE LXC">⚡ Proxmox</span>`;
     } else if (proxy.source === 'lxd') {
       sourceBadge = `<span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #10b981; font-size: 0.7rem;" title="Canonical LXD / Incus">🐧 LXD/Incus</span>`;
+    } else if (proxy.source === 'manual' || proxy.source === 'npm-portal') {
+      sourceBadge = `<span class="badge badge-amber" style="font-size: 0.7rem;" title="Configured directly via Nginx Proxy Manager portal">⚙️ NPM Portal</span>`;
+    }
+
+    let liveStatusBadge = `<span class="badge badge-emerald">● Live</span>`;
+    if (proxy.status === 'disabled') {
+      liveStatusBadge = `<span class="badge badge-gray">⏸ Disabled</span>`;
+    }
+
+    let stratBadge = `<span class="badge badge-gray">${escapeHtml(proxy.resolution_method || 'auto')}</span>`;
+    if (proxy.source === 'manual' || proxy.source === 'npm-portal') {
+      stratBadge = `<span class="badge badge-amber" title="Manually configured from NPM portal">Manual (NPM)</span>`;
+    }
+
+    let containerTitle = escapeHtml(proxy.container_name || 'NPM Portal Host');
+    let containerSub = escapeHtml(proxy.image || (proxy.source_file ? 'manifest: ' + proxy.source_file : (proxy.container_id ? proxy.container_id.substring(0, 12) : '')));
+    if (proxy.source === 'manual' || proxy.source === 'npm-portal') {
+      if (!proxy.container_id && (!proxy.container_name || proxy.container_name === 'npm-portal')) {
+        containerTitle = `<span style="color: var(--text-secondary); font-style: italic;">NPM Portal Host</span>`;
+        containerSub = `<span style="color: var(--text-muted);">Target: ${escapeHtml(proxy.forward_host)}:${proxy.forward_port}</span>`;
+      } else {
+        containerTitle = `<span>${escapeHtml(proxy.container_name)}</span>`;
+        containerSub = `<span class="badge badge-amber" style="font-size: 0.65rem;">Linked via NPM</span>`;
+      }
     }
 
     let locationBadge = '';
@@ -501,7 +630,7 @@ function renderProxiesTable(filterText = '') {
     }
 
     tr.innerHTML = `
-      <td><span class="badge badge-emerald">● Live</span></td>
+      <td>${liveStatusBadge}</td>
       <td><div class="domain-chip-group">${domainChips}</div></td>
       <td>
         <span class="target-badge">
@@ -521,12 +650,12 @@ function renderProxiesTable(filterText = '') {
       </td>
       <td>
         <div class="container-info">
-          <span class="container-title">${escapeHtml(proxy.container_name)}</span>
-          <span class="container-sub">${escapeHtml(proxy.image || (proxy.source_file ? 'manifest: ' + proxy.source_file : (proxy.container_id ? proxy.container_id.substring(0, 12) : '')))}</span>
+          <span class="container-title">${containerTitle}</span>
+          <span class="container-sub">${containerSub}</span>
         </div>
       </td>
       <td>${sslBadge}</td>
-      <td><span class="badge badge-gray">${escapeHtml(proxy.resolution_method || 'auto')}</span></td>
+      <td>${stratBadge}</td>
       <td><span style="font-family: var(--font-mono); color: var(--text-muted);">#${proxy.npm_host_id}</span></td>
       <td><span style="font-size: 0.8rem; color: var(--text-muted);">${lastSyncTime}</span></td>
       <td>
@@ -571,7 +700,9 @@ function renderContainersTable(filterText = '') {
     const tr = document.createElement('tr');
 
     let statusBadge = '';
-    if (c.discovered) {
+    if (c.manual_npm || (c.ignored_reason && c.ignored_reason.includes('NPM portal'))) {
+      statusBadge = `<span class="badge badge-amber" title="Manually configured from NPM portal">⚙️ NPM Portal</span>`;
+    } else if (c.discovered) {
       statusBadge = `<span class="badge badge-emerald">✓ Discovered</span>`;
     } else {
       statusBadge = `<span class="badge badge-gray" title="${escapeHtml(c.ignored_reason || '')}">Ignored</span>`;
@@ -586,7 +717,19 @@ function renderContainersTable(filterText = '') {
       healthBadge = `<span class="badge badge-rose" style="font-size:0.7rem; margin-left:4px;" title="HealthCheck: Unhealthy">❌ unhealthy</span>`;
     }
 
-    const domainText = c.domains && c.domains.length > 0 ? c.domains.join(', ') : `<span class="text-muted">—</span>`;
+    let domainText = `<span class="text-muted">—</span>`;
+    if (c.domains && c.domains.length > 0) {
+      domainText = c.domains.map(d => {
+        return `<a href="http://${d}" target="_blank" rel="noopener noreferrer" class="domain-chip" style="font-size: 0.72rem; padding: 0.15rem 0.45rem;">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+            <polyline points="15 3 21 3 21 9"></polyline>
+            <line x1="10" y1="14" x2="21" y2="3"></line>
+          </svg>
+          ${escapeHtml(d)}
+        </a>`;
+      }).join(' ');
+    }
     const portText = c.port ? c.port : `<span class="text-muted">—</span>`;
 
     let sourceBadge = `<span class="badge badge-cyan" style="font-size:0.65rem;">Docker</span>`;
@@ -735,7 +878,7 @@ function showProxyModal(domainKey) {
 
       <div>
         <label class="text-muted" style="font-size: 0.75rem; text-transform: uppercase;">Container</label>
-        <div><strong>${escapeHtml(proxy.container_name)}</strong> (ID: <code>${escapeHtml(proxy.container_id.substring(0, 12))}</code>)</div>
+        <div><strong>${escapeHtml(proxy.container_name || 'NPM Portal Host')}</strong> ${proxy.container_id ? `(ID: <code>${escapeHtml(proxy.container_id.substring(0, 12))}</code>)` : `<span class="badge badge-amber" style="font-size:0.7rem; margin-left: 4px;">NPM Portal</span>`}</div>
       </div>
 
       <div>
@@ -1108,7 +1251,7 @@ function renderClusterNodes(filterText = '') {
             <span class="text-muted">🐳 Docker Engine:</span>
             <span>${node.docker_connected ? `<span style="color:#10b981; font-weight:600;">Connected</span> <span style="font-size:0.75rem; color:var(--text-muted); font-family:var(--font-mono);">(${escapeHtml(node.docker_version || 'active')})</span>` : '<span style="color:#f43f5e;">Disconnected</span>'}</span>
           </div>
-          <div class="node-engine-row">
+          <div class="node-engine-row" style="cursor: pointer;" onclick="openProxmoxModal('${escapeHtml(nodeId)}')" title="Configure Proxmox VE LXC Discovery">
             <span class="text-muted">⚡ Proxmox VE:</span>
             <span>
               ${node.pve_connected 
@@ -1700,6 +1843,11 @@ let activePveNodeId = null;
 function openProxmoxModal(nodeId) {
   activePveNodeId = nodeId;
   const modal = document.getElementById('proxmox-config-modal');
+  if (!modal) {
+    console.error('Modal #proxmox-config-modal not found');
+    return;
+  }
+
   const badge = document.getElementById('pve-modal-node-badge');
   const resultDiv = document.getElementById('pve-test-result');
   if (badge) badge.textContent = nodeId;
@@ -1710,7 +1858,7 @@ function openProxmoxModal(nodeId) {
   }
 
   // Find node in clusterData for initial quick values
-  const node = clusterData.find(n => n.node_id === nodeId || (n.is_controller && (nodeId === 'controller-main' || nodeId === 'local')));
+  const node = (clusterData || []).find(n => n.node_id === nodeId || (n.is_controller && (nodeId === 'controller-main' || nodeId === 'local')));
   const enabledInput = document.getElementById('pve-modal-enabled');
   const urlInput = document.getElementById('pve-modal-url');
   const nodeInput = document.getElementById('pve-modal-target-node');
@@ -1737,9 +1885,21 @@ function openProxmoxModal(nodeId) {
         secretInput.placeholder = 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx';
       }
     }
+  } else {
+    if (enabledInput) enabledInput.checked = false;
+    if (urlInput) urlInput.value = '';
+    if (nodeInput) nodeInput.value = '';
+    if (tokenIdInput) tokenIdInput.value = '';
+    if (ifaceInput) ifaceInput.value = 'eth0';
+    if (subnetsInput) subnetsInput.value = '';
+    if (verifySSLInput) verifySSLInput.checked = false;
+    if (secretInput) {
+      secretInput.value = '';
+      secretInput.placeholder = 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx';
+    }
   }
 
-  if (modal) modal.style.display = 'flex';
+  modal.style.display = 'flex';
 
   // Fetch freshest config from server
   fetch(`/api/cluster/nodes/${encodeURIComponent(nodeId)}/proxmox`)
@@ -1769,6 +1929,9 @@ function closeProxmoxModal() {
   if (modal) modal.style.display = 'none';
   activePveNodeId = null;
 }
+
+window.openProxmoxModal = openProxmoxModal;
+window.closeProxmoxModal = closeProxmoxModal;
 
 async function testProxmoxConnection() {
   const btn = document.getElementById('btn-test-pve-conn');
