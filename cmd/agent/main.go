@@ -28,7 +28,7 @@ const banner = `
  | |\  |  ___/| |  | |  / ___ \ |_| | || (_) | | |_| | \__ \ 
  |_| \_|_|    |_|  |_| /_/   \_\__,_|\__\___/  |____/|_|___/ 
                                                              
-     Automated Ingress & Discovery Engine (v2.0.0)       
+     Automated Ingress & Discovery Engine (v2.0.1)       
    Docker • Proxmox LXC • LXD/Incus • Layer 4 Streams • IaC  
 =============================================================
 `
@@ -36,7 +36,7 @@ const banner = `
 func main() {
 	fmt.Print(banner)
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds)
-	log.Println("[info] Starting NPM Auto-Discovery v2.0.0 (Production Release)")
+	log.Println("[info] Starting NPM Auto-Discovery v2.0.1 (Production Release)")
 
 	// 1. Load configuration
 	cfg, err := config.LoadFromEnv()

@@ -12,22 +12,32 @@
 </head>
 <body>
   <!-- Header / Navigation Bar -->
+  <!-- Header / Navigation Bar -->
   <header class="app-header">
     <div class="header-container">
-      <div class="brand">
-        <div class="brand-icon">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
-            <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
-            <line x1="6" y1="6" x2="6.01" y2="6"></line>
-            <line x1="6" y1="18" x2="6.01" y2="18"></line>
+      <div class="header-top-row">
+        <div class="brand">
+          <div class="brand-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
+              <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
+              <line x1="6" y1="6" x2="6.01" y2="6"></line>
+              <line x1="6" y1="18" x2="6.01" y2="18"></line>
+            </svg>
+            <span class="pulse-indicator"></span>
+          </div>
+          <div class="brand-text">
+            <h1>NPM Auto-Discovery</h1>
+            <span class="badge version-badge">v2.0.1</span>
+          </div>
+        </div>
+
+        <button id="sync-now-btn" class="btn btn-primary" title="Trigger full container scan and NPM sync">
+          <svg class="btn-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
           </svg>
-          <span class="pulse-indicator"></span>
-        </div>
-        <div class="brand-text">
-          <h1>NPM Auto-Discovery</h1>
-          <span class="badge version-badge">v2.0.0</span>
-        </div>
+          <span>Sync Now</span>
+        </button>
       </div>
 
       <!-- Quick status pills -->
@@ -81,13 +91,6 @@
           <span class="status-label">Prometheus:</span>
           <span class="status-val" style="color:#00f2fe;">/metrics</span>
         </a>
-        
-        <button id="sync-now-btn" class="btn btn-primary" title="Trigger full container scan and NPM sync">
-          <svg class="btn-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
-          </svg>
-          <span>Sync Now</span>
-        </button>
       </div>
     </div>
   </header>
