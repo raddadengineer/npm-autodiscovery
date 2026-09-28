@@ -163,6 +163,8 @@ type Syncer struct {
 	dockerClient *docker.Client
 	npmClient    *npm.Client
 	pveClient    *pve.Client
+	pveClients   map[string]*pve.Client // Key: config ID -> client
+	pveConfigs   map[string]PVEConfig   // Key: config ID -> config
 	lxdClient    *lxd.Client
 
 	mu             sync.RWMutex
@@ -195,6 +197,8 @@ func NewSyncer(cfg *config.Config, dClient *docker.Client, nClient *npm.Client) 
 		cfg:               cfg,
 		dockerClient:      dClient,
 		npmClient:         nClient,
+		pveClients:        make(map[string]*pve.Client),
+		pveConfigs:        make(map[string]PVEConfig),
 		trackedProxies:    make(map[string]*ManagedProxy),
 		manualProxies:     make(map[int]*ManagedProxy),
 		trackedStreams:    make(map[int]*ManagedStream),
@@ -212,6 +216,9 @@ func NewSyncer(cfg *config.Config, dClient *docker.Client, nClient *npm.Client) 
 func NewSyncerWithProviders(cfg *config.Config, dClient *docker.Client, nClient *npm.Client, pveClient *pve.Client, lxdClient *lxd.Client) *Syncer {
 	s := NewSyncer(cfg, dClient, nClient)
 	s.pveClient = pveClient
+	if pveClient != nil {
+		s.pveClients["default"] = pveClient
+	}
 	s.lxdClient = lxdClient
 	return s
 }
@@ -221,6 +228,11 @@ func (s *Syncer) SetPVEClient(client *pve.Client) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.pveClient = client
+	if client != nil {
+		s.pveClients["default"] = client
+	} else {
+		delete(s.pveClients, "default")
+	}
 }
 
 // SetLXDClient sets the Canonical LXD / Incus provider client.
@@ -258,7 +270,9 @@ func (s *Syncer) Start(ctx context.Context) {
 		if localID == "" {
 			localID = "controller-main"
 		}
-		if pveCfg := s.clusterRegistry.GetNodePVEConfig(localID); pveCfg != nil && pveCfg.Enabled {
+		if pveCfgs := s.clusterRegistry.GetNodePVEConfigs(localID); len(pveCfgs) > 0 {
+			_ = s.ApplyDynamicPVEConfigs(pveCfgs)
+		} else if pveCfg := s.clusterRegistry.GetNodePVEConfig(localID); pveCfg != nil && pveCfg.Enabled {
 			_ = s.ApplyDynamicPVEConfig(*pveCfg)
 		}
 	}
@@ -1303,15 +1317,26 @@ func (s *Syncer) performFullSync(ctx context.Context, triggerSource string) {
 	// 3. Proxmox VE (PVE) LXC Discovery (Phase 3.1)
 	activePVEDomains := make(map[string]bool)
 	var allPVEStreams []pve.PVEStream
+	var allPVEContainers []pve.LXCContainerSummary
 	syncedPVECount := 0
-	if s.pveClient != nil {
-		pveRoutes, pveStreams, pveContainers, err := s.pveClient.DiscoverRoutes(ctx, s.cfg.DefaultForwardScheme, s.cfg.DefaultSSLEnabled, s.cfg.DefaultWebsocket, s.cfg.DefaultBlockExploits)
-		if err == nil {
-			s.mu.Lock()
-			s.pveContainers = pveContainers
-			s.mu.Unlock()
 
-			allPVEStreams = pveStreams
+	s.mu.RLock()
+	clientsToRun := make([]*pve.Client, 0, len(s.pveClients))
+	for _, cl := range s.pveClients {
+		if cl != nil {
+			clientsToRun = append(clientsToRun, cl)
+		}
+	}
+	if len(clientsToRun) == 0 && s.pveClient != nil {
+		clientsToRun = append(clientsToRun, s.pveClient)
+	}
+	s.mu.RUnlock()
+
+	for _, client := range clientsToRun {
+		pveRoutes, pveStreams, pveContainers, err := client.DiscoverRoutes(ctx, s.cfg.DefaultForwardScheme, s.cfg.DefaultSSLEnabled, s.cfg.DefaultWebsocket, s.cfg.DefaultBlockExploits)
+		if err == nil {
+			allPVEContainers = append(allPVEContainers, pveContainers...)
+			allPVEStreams = append(allPVEStreams, pveStreams...)
 			for _, r := range pveRoutes {
 				if len(r.DomainNames) > 0 {
 					activePVEDomains[strings.ToLower(r.DomainNames[0])] = true
@@ -1320,8 +1345,14 @@ func (s *Syncer) performFullSync(ctx context.Context, triggerSource string) {
 				syncedPVECount++
 			}
 		} else {
-			s.EmitLog(LevelWarn, "pve", "Proxmox VE discovery error", err.Error())
+			s.EmitLog(LevelWarn, "pve", fmt.Sprintf("Proxmox VE discovery error (%s)", client.BaseURL()), err.Error())
 		}
+	}
+
+	if len(clientsToRun) > 0 {
+		s.mu.Lock()
+		s.pveContainers = allPVEContainers
+		s.mu.Unlock()
 	}
 
 	// 4. Canonical LXD / Incus Discovery (Phase 3.2)
@@ -1387,7 +1418,7 @@ func (s *Syncer) performFullSync(ctx context.Context, triggerSource string) {
 						}
 					}
 				} else if source == "pve" {
-					if s.pveClient != nil && len(host.DomainNames) > 0 {
+					if (s.pveClient != nil || len(s.pveClients) > 0) && len(host.DomainNames) > 0 {
 						primaryDomain := strings.ToLower(host.DomainNames[0])
 						if !activePVEDomains[primaryDomain] {
 							s.EmitLog(LevelWarn, "sync", fmt.Sprintf("Found orphaned Proxmox LXC proxy host #%d (domains: %v) - pruning", host.ID, host.DomainNames), "")
@@ -2199,19 +2230,44 @@ func (s *Syncer) GetStatusOverview(ctx context.Context) StatusOverview {
 	pveNode := ""
 	pveVer := ""
 	pveRunningCount := 0
-	if s.pveClient != nil {
+
+	s.mu.RLock()
+	if len(s.pveClients) > 0 {
+		connectedCount := 0
+		var urls []string
+		for _, cl := range s.pveClients {
+			if cl != nil {
+				if cl.IsConnected() {
+					pveConn = true
+					connectedCount++
+					if pveVer == "" {
+						pveVer = cl.Version()
+					}
+					if pveNode == "" {
+						pveNode = cl.ConfiguredNode()
+					}
+				}
+				urls = append(urls, cl.BaseURL())
+			}
+		}
+		if len(urls) > 0 {
+			pveURL = strings.Join(urls, ", ")
+		}
+		if len(s.pveClients) > 1 {
+			pveVer = fmt.Sprintf("%d/%d online", connectedCount, len(s.pveClients))
+		}
+	} else if s.pveClient != nil {
 		pveConn = s.pveClient.IsConnected()
 		pveURL = s.pveClient.BaseURL()
 		pveNode = s.pveClient.ConfiguredNode()
 		pveVer = s.pveClient.Version()
-		s.mu.RLock()
-		for _, c := range s.pveContainers {
-			if strings.EqualFold(c.Status, "running") {
-				pveRunningCount++
-			}
-		}
-		s.mu.RUnlock()
 	}
+	for _, c := range s.pveContainers {
+		if strings.EqualFold(c.Status, "running") {
+			pveRunningCount++
+		}
+	}
+	s.mu.RUnlock()
 
 	// LXD status
 	lxdEnabled := s.cfg.LXDEnabled
@@ -2438,8 +2494,13 @@ func (s *Syncer) getLocalContainersView(ctx context.Context) ([]ContainerStatusV
 			ignored = "No Proxmox discovery tags ('npm-domain=...') or notes"
 		}
 
+		pveID := fmt.Sprintf("pve:%d", pc.VMID)
+		if pc.Node != "" {
+			pveID = fmt.Sprintf("pve:%s:%d", pc.Node, pc.VMID)
+		}
+
 		views = append(views, ContainerStatusView{
-			ID:            fmt.Sprintf("pve:%d", pc.VMID),
+			ID:            pveID,
 			Name:          fmt.Sprintf("%s (%s)", pc.Name, pc.Node),
 			Image:         "lxc",
 			Source:        "pve",
@@ -2864,36 +2925,85 @@ func min(a, b int) int {
 	return b
 }
 
-// GetNodePVEConfig returns the Proxmox VE configuration for a given node.
-func (s *Syncer) GetNodePVEConfig(nodeID string) *PVEConfig {
+// GetNodePVEConfigs returns all Proxmox VE configurations for a given node.
+func (s *Syncer) GetNodePVEConfigs(nodeID string) []PVEConfig {
 	localID := s.cfg.HostID
 	if localID == "" {
 		localID = "controller-main"
 	}
 
 	if nodeID == "" || strings.EqualFold(nodeID, localID) || strings.EqualFold(nodeID, "local") || strings.EqualFold(nodeID, "controller-main") {
+		if s.clusterRegistry != nil {
+			if cfgs := s.clusterRegistry.GetNodePVEConfigs(localID); len(cfgs) > 0 {
+				return cfgs
+			}
+		}
+
 		s.mu.RLock()
 		defer s.mu.RUnlock()
-		return &PVEConfig{
-			Enabled:            s.cfg.PVEEnabled,
-			URL:                s.cfg.PVEURL,
-			TokenID:            s.cfg.PVETokenID,
-			TokenSecret:        s.cfg.PVETokenSecret,
-			Node:               s.cfg.PVENode,
-			VerifySSL:          s.cfg.PVEVerifySSL,
-			PreferredInterface: s.cfg.PVEPreferredInterface,
-			AllowedSubnets:     s.cfg.PVEAllowedSubnets,
-			HasSecret:          s.cfg.PVETokenSecret != "",
+		if len(s.pveConfigs) > 0 {
+			res := make([]PVEConfig, 0, len(s.pveConfigs))
+			for _, c := range s.pveConfigs {
+				cp := c
+				cp.HasSecret = cp.TokenSecret != ""
+				res = append(res, cp)
+			}
+			return res
 		}
+
+		if s.cfg.PVEURL != "" {
+			return []PVEConfig{{
+				ID:                 "default",
+				Name:               "Default Proxmox",
+				Enabled:            s.cfg.PVEEnabled,
+				URL:                s.cfg.PVEURL,
+				TokenID:            s.cfg.PVETokenID,
+				TokenSecret:        s.cfg.PVETokenSecret,
+				Node:               s.cfg.PVENode,
+				VerifySSL:          s.cfg.PVEVerifySSL,
+				PreferredInterface: s.cfg.PVEPreferredInterface,
+				AllowedSubnets:     s.cfg.PVEAllowedSubnets,
+				HasSecret:          s.cfg.PVETokenSecret != "",
+			}}
+		}
+		return nil
 	}
 
 	if s.clusterRegistry != nil {
-		return s.clusterRegistry.GetNodePVEConfig(nodeID)
+		return s.clusterRegistry.GetNodePVEConfigs(nodeID)
 	}
 	return nil
 }
 
-// SetNodePVEConfig updates the Proxmox VE configuration for a specific node (controller or remote worker).
+// GetNodePVEConfig returns the primary Proxmox VE configuration for a given node.
+func (s *Syncer) GetNodePVEConfig(nodeID string) *PVEConfig {
+	cfgs := s.GetNodePVEConfigs(nodeID)
+	if len(cfgs) == 0 {
+		return nil
+	}
+	for _, c := range cfgs {
+		if c.Enabled {
+			cp := c
+			return &cp
+		}
+	}
+	cp := cfgs[0]
+	return &cp
+}
+
+// GetNodePVEConfigByID returns a specific Proxmox VE configuration by ID for a given node.
+func (s *Syncer) GetNodePVEConfigByID(nodeID string, configID string) *PVEConfig {
+	cfgs := s.GetNodePVEConfigs(nodeID)
+	for _, c := range cfgs {
+		if c.ID == configID || (configID == "default" && (c.ID == "default" || c.ID == "")) {
+			cp := c
+			return &cp
+		}
+	}
+	return nil
+}
+
+// SetNodePVEConfig updates or adds a Proxmox VE configuration for a specific node (controller or remote worker).
 func (s *Syncer) SetNodePVEConfig(nodeID string, cfg PVEConfig) error {
 	localID := s.cfg.HostID
 	if localID == "" {
@@ -2901,13 +3011,12 @@ func (s *Syncer) SetNodePVEConfig(nodeID string, cfg PVEConfig) error {
 	}
 
 	if nodeID == "" || strings.EqualFold(nodeID, localID) || strings.EqualFold(nodeID, "local") || strings.EqualFold(nodeID, "controller-main") {
-		if err := s.ApplyDynamicPVEConfig(cfg); err != nil {
-			return err
-		}
 		if s.clusterRegistry != nil {
 			s.clusterRegistry.SetNodePVEConfig(localID, cfg)
+			allCfgs := s.clusterRegistry.GetNodePVEConfigs(localID)
+			return s.ApplyDynamicPVEConfigs(allCfgs)
 		}
-		return nil
+		return s.ApplyDynamicPVEConfig(cfg)
 	}
 
 	if s.clusterRegistry != nil {
@@ -2920,88 +3029,202 @@ func (s *Syncer) SetNodePVEConfig(nodeID string, cfg PVEConfig) error {
 	return fmt.Errorf("cluster registry unavailable")
 }
 
-// ApplyDynamicPVEConfig applies a new or updated Proxmox VE configuration at runtime.
-func (s *Syncer) ApplyDynamicPVEConfig(pveCfg PVEConfig) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	// If no changes and already connected/disconnected, skip
-	isUnchanged := s.cfg.PVEEnabled == pveCfg.Enabled &&
-		s.cfg.PVEURL == pveCfg.URL &&
-		s.cfg.PVETokenID == pveCfg.TokenID &&
-		(pveCfg.TokenSecret == "" || s.cfg.PVETokenSecret == pveCfg.TokenSecret) &&
-		s.cfg.PVENode == pveCfg.Node &&
-		s.cfg.PVEVerifySSL == pveCfg.VerifySSL &&
-		s.cfg.PVEPreferredInterface == pveCfg.PreferredInterface &&
-		s.cfg.PVEAllowedSubnets == pveCfg.AllowedSubnets
-
-	if isUnchanged {
-		if !pveCfg.Enabled && s.pveClient == nil {
-			return nil
-		}
-		if pveCfg.Enabled && s.pveClient != nil {
-			return nil
-		}
+// SetNodePVEConfigs replaces all Proxmox VE configurations for a specific node.
+func (s *Syncer) SetNodePVEConfigs(nodeID string, cfgs []PVEConfig) error {
+	localID := s.cfg.HostID
+	if localID == "" {
+		localID = "controller-main"
 	}
 
-	if !pveCfg.Enabled {
-		wasEnabled := s.cfg.PVEEnabled
-		s.cfg.PVEEnabled = false
-		s.pveClient = nil
-		s.pveContainers = nil
-		if wasEnabled {
-			s.EmitLog(LevelInfo, "pve", "Proxmox VE LXC Discovery disabled", "")
-			go s.TriggerSync()
+	if nodeID == "" || strings.EqualFold(nodeID, localID) || strings.EqualFold(nodeID, "local") || strings.EqualFold(nodeID, "controller-main") {
+		if s.clusterRegistry != nil {
+			s.clusterRegistry.SetNodePVEConfigs(localID, cfgs)
+			allCfgs := s.clusterRegistry.GetNodePVEConfigs(localID)
+			return s.ApplyDynamicPVEConfigs(allCfgs)
 		}
+		return s.ApplyDynamicPVEConfigs(cfgs)
+	}
+
+	if s.clusterRegistry != nil {
+		s.clusterRegistry.SetNodePVEConfigs(nodeID, cfgs)
+		s.EmitLog(LevelInfo, "cluster", fmt.Sprintf("Proxmox VE configurations updated for remote worker '%s' (%d endpoints)", nodeID, len(cfgs)), "")
 		return nil
 	}
 
-	secret := pveCfg.TokenSecret
-	if secret == "" && s.cfg.PVETokenSecret != "" {
-		secret = s.cfg.PVETokenSecret
+	return fmt.Errorf("cluster registry unavailable")
+}
+
+// DeleteNodePVEConfig removes a Proxmox VE configuration by ID for a specific node.
+func (s *Syncer) DeleteNodePVEConfig(nodeID string, configID string) error {
+	localID := s.cfg.HostID
+	if localID == "" {
+		localID = "controller-main"
 	}
 
-	preferredIface := pveCfg.PreferredInterface
-	if preferredIface == "" {
-		preferredIface = "eth0"
+	if nodeID == "" || strings.EqualFold(nodeID, localID) || strings.EqualFold(nodeID, "local") || strings.EqualFold(nodeID, "controller-main") {
+		if s.clusterRegistry != nil {
+			s.clusterRegistry.DeleteNodePVEConfig(localID, configID)
+			allCfgs := s.clusterRegistry.GetNodePVEConfigs(localID)
+			return s.ApplyDynamicPVEConfigs(allCfgs)
+		}
+		s.mu.Lock()
+		delete(s.pveClients, configID)
+		delete(s.pveConfigs, configID)
+		var first *pve.Client
+		for _, cl := range s.pveClients {
+			first = cl
+			break
+		}
+		s.pveClient = first
+		s.cfg.PVEEnabled = len(s.pveClients) > 0
+		s.mu.Unlock()
+		go s.TriggerSync()
+		return nil
 	}
 
-	client, err := pve.NewClient(
-		pveCfg.URL,
-		pveCfg.TokenID,
-		secret,
-		pveCfg.Node,
-		pveCfg.VerifySSL,
-		10*time.Second,
-		preferredIface,
-		pveCfg.AllowedSubnets,
-	)
-	if err != nil {
-		s.EmitLog(LevelError, "pve", "Failed to initialize Proxmox VE client", err.Error())
-		return fmt.Errorf("failed to initialize Proxmox VE client: %w", err)
+	if s.clusterRegistry != nil {
+		if s.clusterRegistry.DeleteNodePVEConfig(nodeID, configID) {
+			s.EmitLog(LevelInfo, "cluster", fmt.Sprintf("Proxmox VE configuration '%s' removed from remote worker '%s'", configID, nodeID), "")
+			return nil
+		}
+		return fmt.Errorf("config '%s' not found for node '%s'", configID, nodeID)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
-	defer cancel()
-	if err := client.Ping(ctx); err != nil {
-		s.EmitLog(LevelWarn, "pve", fmt.Sprintf("Proxmox VE ping warning (%s)", pveCfg.URL), err.Error())
-	} else {
-		s.EmitLog(LevelSuccess, "pve", fmt.Sprintf("Connected to Proxmox VE API %s", client.Version()), client.BaseURL())
+	return fmt.Errorf("cluster registry unavailable")
+}
+
+// ApplyDynamicPVEConfigs applies multiple Proxmox VE configurations at runtime.
+func (s *Syncer) ApplyDynamicPVEConfigs(cfgs []PVEConfig) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.pveClients == nil {
+		s.pveClients = make(map[string]*pve.Client)
+	}
+	if s.pveConfigs == nil {
+		s.pveConfigs = make(map[string]PVEConfig)
 	}
 
-	s.cfg.PVEEnabled = true
-	s.cfg.PVEURL = pveCfg.URL
-	s.cfg.PVETokenID = pveCfg.TokenID
-	s.cfg.PVETokenSecret = secret
-	s.cfg.PVENode = pveCfg.Node
-	s.cfg.PVEVerifySSL = pveCfg.VerifySSL
-	s.cfg.PVEPreferredInterface = preferredIface
-	s.cfg.PVEAllowedSubnets = pveCfg.AllowedSubnets
-	s.pveClient = client
+	newClients := make(map[string]*pve.Client)
+	newConfigs := make(map[string]PVEConfig)
+	var firstClient *pve.Client
+	var primaryCfg *PVEConfig
+	anyEnabled := false
 
-	s.EmitLog(LevelSuccess, "pve", fmt.Sprintf("Proxmox VE LXC Discovery enabled for node '%s'", s.cfg.HostID),
-		fmt.Sprintf("URL: %s, Node: %s, VerifySSL: %v", pveCfg.URL, pveCfg.Node, pveCfg.VerifySSL))
+	for i, cfg := range cfgs {
+		if cfg.ID == "" {
+			cfg.ID = fmt.Sprintf("pve-%d", i+1)
+		}
+		newConfigs[cfg.ID] = cfg
+
+		if !cfg.Enabled || cfg.URL == "" {
+			continue
+		}
+		anyEnabled = true
+		if primaryCfg == nil {
+			primaryCfg = &cfg
+		}
+
+		secret := cfg.TokenSecret
+		if secret == "" {
+			if oldCfg, ok := s.pveConfigs[cfg.ID]; ok && oldCfg.TokenSecret != "" {
+				secret = oldCfg.TokenSecret
+			} else if s.cfg.PVETokenSecret != "" {
+				secret = s.cfg.PVETokenSecret
+			}
+		}
+
+		preferredIface := cfg.PreferredInterface
+		if preferredIface == "" {
+			preferredIface = "eth0"
+		}
+
+		var client *pve.Client
+		cleanURL := strings.TrimRight(cfg.URL, "/")
+		if !strings.HasPrefix(cleanURL, "http://") && !strings.HasPrefix(cleanURL, "https://") {
+			cleanURL = "https://" + cleanURL
+		}
+
+		if existing, ok := s.pveClients[cfg.ID]; ok && existing != nil &&
+			existing.BaseURL() == cleanURL &&
+			existing.ConfiguredNode() == cfg.Node {
+			client = existing
+		} else {
+			var err error
+			client, err = pve.NewClient(
+				cfg.URL,
+				cfg.TokenID,
+				secret,
+				cfg.Node,
+				cfg.VerifySSL,
+				10*time.Second,
+				preferredIface,
+				cfg.AllowedSubnets,
+			)
+			if err != nil {
+				s.EmitLog(LevelError, "pve", fmt.Sprintf("Failed to initialize Proxmox VE client [%s]", cfg.ID), err.Error())
+				continue
+			}
+			go func(c *pve.Client, u string, id string) {
+				ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+				defer cancel()
+				if err := c.Ping(ctx); err == nil {
+					s.EmitLog(LevelSuccess, "pve", fmt.Sprintf("Connected to Proxmox VE API %s [%s]", c.Version(), id), u)
+				}
+			}(client, cfg.URL, cfg.ID)
+		}
+
+		newClients[cfg.ID] = client
+		if firstClient == nil {
+			firstClient = client
+		}
+	}
+
+	s.pveClients = newClients
+	s.pveConfigs = newConfigs
+	s.pveClient = firstClient
+	s.cfg.PVEEnabled = anyEnabled
+
+	if primaryCfg != nil {
+		s.cfg.PVEURL = primaryCfg.URL
+		s.cfg.PVETokenID = primaryCfg.TokenID
+		if primaryCfg.TokenSecret != "" {
+			s.cfg.PVETokenSecret = primaryCfg.TokenSecret
+		}
+		s.cfg.PVENode = primaryCfg.Node
+		s.cfg.PVEVerifySSL = primaryCfg.VerifySSL
+		s.cfg.PVEPreferredInterface = primaryCfg.PreferredInterface
+		s.cfg.PVEAllowedSubnets = primaryCfg.AllowedSubnets
+	}
+
+	if len(newClients) == 0 {
+		s.pveContainers = nil
+	}
 
 	go s.TriggerSync()
 	return nil
+}
+
+// ApplyDynamicPVEConfig applies a single Proxmox VE configuration at runtime.
+func (s *Syncer) ApplyDynamicPVEConfig(pveCfg PVEConfig) error {
+	s.mu.Lock()
+	if s.pveConfigs == nil {
+		s.pveConfigs = make(map[string]PVEConfig)
+	}
+	cfgList := make([]PVEConfig, 0, len(s.pveConfigs)+1)
+	found := false
+	for _, c := range s.pveConfigs {
+		if (pveCfg.ID != "" && c.ID == pveCfg.ID) || (pveCfg.ID == "" && (c.ID == "default" || len(s.pveConfigs) == 1)) {
+			cfgList = append(cfgList, pveCfg)
+			found = true
+		} else {
+			cfgList = append(cfgList, c)
+		}
+	}
+	if !found {
+		cfgList = append(cfgList, pveCfg)
+	}
+	s.mu.Unlock()
+
+	return s.ApplyDynamicPVEConfigs(cfgList)
 }

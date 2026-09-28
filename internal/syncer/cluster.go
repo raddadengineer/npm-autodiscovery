@@ -30,6 +30,8 @@ type NodeReport struct {
 
 // PVEConfig holds configuration parameters to connect to Proxmox VE.
 type PVEConfig struct {
+	ID                 string `json:"id,omitempty"`
+	Name               string `json:"name,omitempty"`
 	Enabled            bool   `json:"enabled"`
 	URL                string `json:"url"`
 	TokenID            string `json:"token_id"`
@@ -62,6 +64,8 @@ type ClusterNodeInfo struct {
 	PVEVerifySSL          bool                  `json:"pve_verify_ssl"`
 	PVEPreferredInterface string                `json:"pve_preferred_interface,omitempty"`
 	PVEAllowedSubnets     string                `json:"pve_allowed_subnets,omitempty"`
+	PVEConfigs            []PVEConfig           `json:"pve_configs,omitempty"`
+	PVEEndpointCount      int                   `json:"pve_endpoint_count,omitempty"`
 	LXDConnected          bool                  `json:"lxd_connected"`
 	ContainerCount        int                   `json:"container_count"`
 	ProxyCount            int                   `json:"proxy_count"`
@@ -76,7 +80,7 @@ type ClusterNodeInfo struct {
 type ClusterRegistry struct {
 	mu         sync.RWMutex
 	nodes      map[string]*ClusterNodeInfo // Key: NodeID
-	pveConfigs map[string]*PVEConfig       // Key: NodeID
+	pveConfigs map[string][]*PVEConfig     // Key: NodeID -> list of PVEConfigs
 	configPath string
 }
 
@@ -84,7 +88,7 @@ type ClusterRegistry struct {
 func NewClusterRegistry() *ClusterRegistry {
 	reg := &ClusterRegistry{
 		nodes:      make(map[string]*ClusterNodeInfo),
-		pveConfigs: make(map[string]*PVEConfig),
+		pveConfigs: make(map[string][]*PVEConfig),
 		configPath: resolveClusterConfigPath(),
 	}
 	reg.loadPersistedPVEConfigs()
@@ -133,22 +137,36 @@ func (r *ClusterRegistry) RegisterOrUpdate(report NodeReport) {
 	pveVerifySSL := false
 	pvePrefIface := "eth0"
 	pveSubnets := ""
+	var pveConfigs []PVEConfig
 
-	if cfg, ok := r.pveConfigs[report.NodeID]; ok && cfg != nil {
-		if cfg.Enabled {
-			pveEnabled = true
+	if cfgs, ok := r.pveConfigs[report.NodeID]; ok && len(cfgs) > 0 {
+		pveConfigs = make([]PVEConfig, len(cfgs))
+		for i, c := range cfgs {
+			cp := *c
+			cp.HasSecret = cp.TokenSecret != ""
+			pveConfigs[i] = cp
+			if c.Enabled {
+				pveEnabled = true
+			}
 		}
-		if cfg.URL != "" {
-			pveURL = cfg.URL
+		primary := cfgs[0]
+		for _, c := range cfgs {
+			if c.Enabled {
+				primary = c
+				break
+			}
 		}
-		if cfg.Node != "" {
-			pveNode = cfg.Node
+		if primary.URL != "" {
+			pveURL = primary.URL
 		}
-		pveTokenID = cfg.TokenID
-		pveHasSecret = cfg.HasSecret
-		pveVerifySSL = cfg.VerifySSL
-		pvePrefIface = cfg.PreferredInterface
-		pveSubnets = cfg.AllowedSubnets
+		if primary.Node != "" {
+			pveNode = primary.Node
+		}
+		pveTokenID = primary.TokenID
+		pveHasSecret = primary.HasSecret
+		pveVerifySSL = primary.VerifySSL
+		pvePrefIface = primary.PreferredInterface
+		pveSubnets = primary.AllowedSubnets
 	}
 
 	info := &ClusterNodeInfo{
@@ -171,6 +189,8 @@ func (r *ClusterRegistry) RegisterOrUpdate(report NodeReport) {
 		PVEVerifySSL:          pveVerifySSL,
 		PVEPreferredInterface: pvePrefIface,
 		PVEAllowedSubnets:     pveSubnets,
+		PVEConfigs:            pveConfigs,
+		PVEEndpointCount:      len(pveConfigs),
 		LXDConnected:          report.Status.LXDConnected,
 		ContainerCount:        len(taggedContainers),
 		ProxyCount:            len(taggedProxies),
@@ -189,56 +209,225 @@ func (r *ClusterRegistry) SetNodePVEConfig(nodeID string, cfg PVEConfig) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	// If secret was not provided in update, keep existing secret
-	if cfg.TokenSecret == "" {
-		if existing, ok := r.pveConfigs[nodeID]; ok && existing.TokenSecret != "" {
-			cfg.TokenSecret = existing.TokenSecret
+	if cfg.ID == "" {
+		if len(r.pveConfigs[nodeID]) > 0 {
+			cfg.ID = r.pveConfigs[nodeID][0].ID
+			if cfg.ID == "" {
+				cfg.ID = "default"
+			}
+		} else {
+			cfg.ID = "default"
 		}
+	}
+
+	existingList := r.pveConfigs[nodeID]
+	var found *PVEConfig
+	for _, c := range existingList {
+		if c.ID == cfg.ID || (cfg.ID == "default" && (c.ID == "default" || c.ID == "")) {
+			found = c
+			break
+		}
+	}
+
+	// If secret was not provided in update, keep existing secret
+	if cfg.TokenSecret == "" && found != nil && found.TokenSecret != "" {
+		cfg.TokenSecret = found.TokenSecret
 	}
 	cfg.HasSecret = cfg.TokenSecret != ""
 
 	cp := cfg
-	r.pveConfigs[nodeID] = &cp
-
-	if node, ok := r.nodes[nodeID]; ok {
-		node.PVEEnabled = cfg.Enabled
-		node.PVEURL = cfg.URL
-		node.PVENode = cfg.Node
-		node.PVETokenID = cfg.TokenID
-		node.PVEHasSecret = cfg.HasSecret
-		node.PVEVerifySSL = cfg.VerifySSL
-		node.PVEPreferredInterface = cfg.PreferredInterface
-		node.PVEAllowedSubnets = cfg.AllowedSubnets
-		if !cfg.Enabled {
-			node.PVEConnected = false
-		}
+	if found != nil {
+		*found = cp
+	} else {
+		r.pveConfigs[nodeID] = append(existingList, &cp)
 	}
 
+	r.updateNodeInfoPVELocked(nodeID)
 	r.savePersistedPVEConfigsLocked()
 }
 
-// GetNodePVEConfig retrieves the configured Proxmox settings for a node.
+// DeleteNodePVEConfig removes a specific Proxmox configuration from a cluster node.
+func (r *ClusterRegistry) DeleteNodePVEConfig(nodeID string, configID string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	existingList, ok := r.pveConfigs[nodeID]
+	if !ok || len(existingList) == 0 {
+		return false
+	}
+
+	newList := make([]*PVEConfig, 0, len(existingList))
+	deleted := false
+	for _, c := range existingList {
+		if c.ID == configID || (configID == "default" && c.ID == "") {
+			deleted = true
+			continue
+		}
+		newList = append(newList, c)
+	}
+
+	if deleted {
+		r.pveConfigs[nodeID] = newList
+		r.updateNodeInfoPVELocked(nodeID)
+		r.savePersistedPVEConfigsLocked()
+	}
+	return deleted
+}
+
+// SetNodePVEConfigs replaces all Proxmox configurations for a cluster node.
+func (r *ClusterRegistry) SetNodePVEConfigs(nodeID string, cfgs []PVEConfig) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	existingMap := make(map[string]*PVEConfig)
+	for _, c := range r.pveConfigs[nodeID] {
+		if c.ID != "" {
+			existingMap[c.ID] = c
+		}
+	}
+
+	newList := make([]*PVEConfig, 0, len(cfgs))
+	for i, c := range cfgs {
+		cp := c
+		if cp.ID == "" {
+			cp.ID = fmt.Sprintf("pve-%d-%d", time.Now().UnixNano(), i+1)
+		}
+		if cp.TokenSecret == "" {
+			if existing, ok := existingMap[cp.ID]; ok && existing.TokenSecret != "" {
+				cp.TokenSecret = existing.TokenSecret
+			}
+		}
+		cp.HasSecret = cp.TokenSecret != ""
+		newList = append(newList, &cp)
+	}
+
+	r.pveConfigs[nodeID] = newList
+	r.updateNodeInfoPVELocked(nodeID)
+	r.savePersistedPVEConfigsLocked()
+}
+
+func (r *ClusterRegistry) updateNodeInfoPVELocked(nodeID string) {
+	node, ok := r.nodes[nodeID]
+	if !ok {
+		return
+	}
+
+	cfgs := r.pveConfigs[nodeID]
+	node.PVEConfigs = make([]PVEConfig, len(cfgs))
+	anyEnabled := false
+	for i, c := range cfgs {
+		cp := *c
+		cp.HasSecret = cp.TokenSecret != ""
+		node.PVEConfigs[i] = cp
+		if c.Enabled {
+			anyEnabled = true
+		}
+	}
+	node.PVEEnabled = anyEnabled
+	node.PVEEndpointCount = len(cfgs)
+
+	if len(cfgs) > 0 {
+		primary := cfgs[0]
+		for _, c := range cfgs {
+			if c.Enabled {
+				primary = c
+				break
+			}
+		}
+		node.PVEURL = primary.URL
+		node.PVENode = primary.Node
+		node.PVETokenID = primary.TokenID
+		node.PVEHasSecret = primary.HasSecret
+		node.PVEVerifySSL = primary.VerifySSL
+		node.PVEPreferredInterface = primary.PreferredInterface
+		node.PVEAllowedSubnets = primary.AllowedSubnets
+		if !anyEnabled {
+			node.PVEConnected = false
+		}
+	} else {
+		node.PVEURL = ""
+		node.PVENode = ""
+		node.PVETokenID = ""
+		node.PVEHasSecret = false
+		node.PVEVerifySSL = false
+		node.PVEPreferredInterface = ""
+		node.PVEAllowedSubnets = ""
+		node.PVEConnected = false
+	}
+}
+
+// GetNodePVEConfigs retrieves all configured Proxmox settings for a node.
+func (r *ClusterRegistry) GetNodePVEConfigs(nodeID string) []PVEConfig {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	cfgs, ok := r.pveConfigs[nodeID]
+	if !ok || len(cfgs) == 0 {
+		return nil
+	}
+
+	result := make([]PVEConfig, len(cfgs))
+	for i, c := range cfgs {
+		cp := *c
+		cp.HasSecret = cp.TokenSecret != ""
+		result[i] = cp
+	}
+	return result
+}
+
+// GetNodePVEConfig retrieves the primary configured Proxmox settings for a node.
 func (r *ClusterRegistry) GetNodePVEConfig(nodeID string) *PVEConfig {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	if cfg, ok := r.pveConfigs[nodeID]; ok && cfg != nil {
-		cp := *cfg
+	if cfgs, ok := r.pveConfigs[nodeID]; ok && len(cfgs) > 0 {
+		for _, c := range cfgs {
+			if c.Enabled {
+				cp := *c
+				cp.HasSecret = cp.TokenSecret != ""
+				return &cp
+			}
+		}
+		cp := *cfgs[0]
 		cp.HasSecret = cp.TokenSecret != ""
 		return &cp
 	}
 	return nil
 }
 
-// GetAllNodePVEConfigs returns all stored node PVE configs.
+// GetNodePVEConfigByID retrieves a specific Proxmox config by ID.
+func (r *ClusterRegistry) GetNodePVEConfigByID(nodeID string, configID string) *PVEConfig {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	if cfgs, ok := r.pveConfigs[nodeID]; ok {
+		for _, c := range cfgs {
+			if c.ID == configID || (configID == "default" && (c.ID == "default" || c.ID == "")) {
+				cp := *c
+				cp.HasSecret = cp.TokenSecret != ""
+				return &cp
+			}
+		}
+	}
+	return nil
+}
+
+// GetAllNodePVEConfigs returns all stored node PVE configs (primary per node).
 func (r *ClusterRegistry) GetAllNodePVEConfigs() map[string]PVEConfig {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	result := make(map[string]PVEConfig, len(r.pveConfigs))
-	for k, v := range r.pveConfigs {
-		if v != nil {
-			cp := *v
+	for k, cfgs := range r.pveConfigs {
+		if len(cfgs) > 0 {
+			primary := cfgs[0]
+			for _, c := range cfgs {
+				if c.Enabled {
+					primary = c
+					break
+				}
+			}
+			cp := *primary
 			cp.HasSecret = cp.TokenSecret != ""
 			result[k] = cp
 		}
@@ -265,12 +454,36 @@ func (r *ClusterRegistry) loadPersistedPVEConfigs() {
 	if err != nil {
 		return
 	}
-	var loaded map[string]*PVEConfig
-	if err := json.Unmarshal(data, &loaded); err == nil {
-		for k, v := range loaded {
+
+	// 1. Try modern multi-config format map[string][]*PVEConfig
+	var multiLoaded map[string][]*PVEConfig
+	if err := json.Unmarshal(data, &multiLoaded); err == nil && len(multiLoaded) > 0 {
+		for k, list := range multiLoaded {
+			var valid []*PVEConfig
+			for _, v := range list {
+				if v != nil {
+					v.HasSecret = v.TokenSecret != ""
+					if v.ID == "" {
+						v.ID = fmt.Sprintf("pve-%d", time.Now().UnixNano())
+					}
+					valid = append(valid, v)
+				}
+			}
+			r.pveConfigs[k] = valid
+		}
+		return
+	}
+
+	// 2. Fallback to legacy single-config format map[string]*PVEConfig
+	var singleLoaded map[string]*PVEConfig
+	if err := json.Unmarshal(data, &singleLoaded); err == nil {
+		for k, v := range singleLoaded {
 			if v != nil {
 				v.HasSecret = v.TokenSecret != ""
-				r.pveConfigs[k] = v
+				if v.ID == "" {
+					v.ID = "default"
+				}
+				r.pveConfigs[k] = []*PVEConfig{v}
 			}
 		}
 	}
@@ -303,19 +516,38 @@ func (r *ClusterRegistry) GetNodes(localNode ClusterNodeInfo) []ClusterNodeInfo 
 	now := time.Now()
 	for _, node := range r.nodes {
 		cp := *node
-		if cfg, ok := r.pveConfigs[cp.NodeID]; ok && cfg != nil {
-			cp.PVEEnabled = cfg.Enabled
-			if cfg.URL != "" {
-				cp.PVEURL = cfg.URL
+		if cfgs, ok := r.pveConfigs[cp.NodeID]; ok && len(cfgs) > 0 {
+			cp.PVEConfigs = make([]PVEConfig, len(cfgs))
+			anyEnabled := false
+			for i, c := range cfgs {
+				cfgCopy := *c
+				cfgCopy.HasSecret = cfgCopy.TokenSecret != ""
+				cp.PVEConfigs[i] = cfgCopy
+				if c.Enabled {
+					anyEnabled = true
+				}
 			}
-			if cfg.Node != "" {
-				cp.PVENode = cfg.Node
+			cp.PVEEnabled = anyEnabled
+			cp.PVEEndpointCount = len(cfgs)
+
+			primary := cfgs[0]
+			for _, c := range cfgs {
+				if c.Enabled {
+					primary = c
+					break
+				}
 			}
-			cp.PVETokenID = cfg.TokenID
-			cp.PVEHasSecret = cfg.HasSecret
-			cp.PVEVerifySSL = cfg.VerifySSL
-			cp.PVEPreferredInterface = cfg.PreferredInterface
-			cp.PVEAllowedSubnets = cfg.AllowedSubnets
+			if primary.URL != "" {
+				cp.PVEURL = primary.URL
+			}
+			if primary.Node != "" {
+				cp.PVENode = primary.Node
+			}
+			cp.PVETokenID = primary.TokenID
+			cp.PVEHasSecret = primary.HasSecret
+			cp.PVEVerifySSL = primary.VerifySSL
+			cp.PVEPreferredInterface = primary.PreferredInterface
+			cp.PVEAllowedSubnets = primary.AllowedSubnets
 		}
 		// Nodes without heartbeat for > 45 seconds are marked offline
 		if now.Sub(cp.LastHeartbeat) > 45*time.Second {
@@ -422,6 +654,8 @@ func (s *Syncer) GetClusterNodes() []ClusterNodeInfo {
 		localNodeIP = "127.0.0.1"
 	}
 
+	localCfgs := s.GetNodePVEConfigs(localNodeID)
+
 	localNode := ClusterNodeInfo{
 		NodeID:                localNodeID,
 		NodeIP:                localNodeIP,
@@ -432,16 +666,18 @@ func (s *Syncer) GetClusterNodes() []ClusterNodeInfo {
 		DockerConnected:       overview.DockerConnected,
 		DockerVersion:         overview.DockerVersion,
 		NPMConnected:          overview.NPMConnected,
-		PVEEnabled:            s.cfg.PVEEnabled,
+		PVEEnabled:            s.cfg.PVEEnabled || overview.PVEEnabled,
 		PVEConnected:          overview.PVEConnected,
-		PVEURL:                s.cfg.PVEURL,
-		PVENode:               s.cfg.PVENode,
+		PVEURL:                overview.PVEURL,
+		PVENode:               overview.PVENode,
 		PVEVersion:            overview.PVEVersion,
 		PVETokenID:            s.cfg.PVETokenID,
 		PVEHasSecret:          s.cfg.PVETokenSecret != "",
 		PVEVerifySSL:          s.cfg.PVEVerifySSL,
 		PVEPreferredInterface: s.cfg.PVEPreferredInterface,
 		PVEAllowedSubnets:     s.cfg.PVEAllowedSubnets,
+		PVEConfigs:            localCfgs,
+		PVEEndpointCount:      len(localCfgs),
 		LXDConnected:          overview.LXDConnected,
 		ContainerCount:        overview.RunningContainers + overview.PVERunningContainers + overview.LXDRunningContainers,
 		ProxyCount:            len(localProxies),
@@ -576,11 +812,16 @@ func (s *Syncer) sendWorkerReport(ctx context.Context) {
 	}
 
 	var pushResp struct {
-		Status    string     `json:"status"`
-		Message   string     `json:"message"`
-		PVEConfig *PVEConfig `json:"pve_config,omitempty"`
+		Status     string      `json:"status"`
+		Message    string      `json:"message"`
+		PVEConfig  *PVEConfig  `json:"pve_config,omitempty"`
+		PVEConfigs []PVEConfig `json:"pve_configs,omitempty"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&pushResp); err == nil && pushResp.PVEConfig != nil {
-		_ = s.ApplyDynamicPVEConfig(*pushResp.PVEConfig)
+	if err := json.NewDecoder(resp.Body).Decode(&pushResp); err == nil {
+		if len(pushResp.PVEConfigs) > 0 {
+			_ = s.ApplyDynamicPVEConfigs(pushResp.PVEConfigs)
+		} else if pushResp.PVEConfig != nil {
+			_ = s.ApplyDynamicPVEConfig(*pushResp.PVEConfig)
+		}
 	}
 }

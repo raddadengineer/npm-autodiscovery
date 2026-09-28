@@ -1255,9 +1255,9 @@ function renderClusterNodes(filterText = '') {
             <span class="text-muted">⚡ Proxmox VE:</span>
             <span>
               ${node.pve_connected 
-                ? `<span style="color:#10b981; font-weight:600;">Active</span> <span style="font-size:0.75rem; color:var(--text-muted);">(${escapeHtml(node.pve_version || 'connected')})</span>` 
+                ? `<span style="color:#10b981; font-weight:600;">Active</span> <span style="font-size:0.75rem; color:var(--text-muted);">(${node.pve_endpoint_count && node.pve_endpoint_count > 1 ? `${node.pve_endpoint_count} endpoints` : escapeHtml(node.pve_version || 'connected')})</span>` 
                 : ((node.pve_enabled || (node.overview && node.overview.pve_enabled))
-                    ? '<span style="color:#f59e0b; font-weight:600;">Enabled (Connecting...)</span>' 
+                    ? `<span style="color:#f59e0b; font-weight:600;">Enabled</span> <span style="font-size:0.75rem; color:var(--text-muted);">(${node.pve_endpoint_count && node.pve_endpoint_count > 1 ? `${node.pve_endpoint_count} endpoints` : 'Connecting...'})</span>` 
                     : '<span style="color:var(--text-muted);">Disabled</span>')}
             </span>
           </div>
@@ -1836,9 +1836,11 @@ function viewConnectedNode(nodeId) {
 }
 
 /* ==============================================================================
-   Proxmox VE LXC Discovery Modal Handlers
+   Proxmox VE LXC Discovery Modal Handlers (Multi-Endpoint Support)
    ============================================================================== */
 let activePveNodeId = null;
+let nodeProxmoxConfigs = [];
+let activePveConfigId = null;
 
 function openProxmoxModal(nodeId) {
   activePveNodeId = nodeId;
@@ -1857,8 +1859,117 @@ function openProxmoxModal(nodeId) {
     resultDiv.innerHTML = '';
   }
 
-  // Find node in clusterData for initial quick values
+  // Pre-fill from clusterData if available
   const node = (clusterData || []).find(n => n.node_id === nodeId || (n.is_controller && (nodeId === 'controller-main' || nodeId === 'local')));
+  if (node && node.pve_configs && node.pve_configs.length > 0) {
+    nodeProxmoxConfigs = JSON.parse(JSON.stringify(node.pve_configs));
+  } else if (node && (node.pve_url || (node.overview && node.overview.pve_url))) {
+    nodeProxmoxConfigs = [{
+      id: 'default',
+      name: 'Primary Proxmox',
+      enabled: !!(node.pve_enabled || (node.overview && node.overview.pve_enabled)),
+      url: node.pve_url || (node.overview && node.overview.pve_url) || '',
+      node: node.pve_node || (node.overview && node.overview.pve_node) || '',
+      token_id: node.pve_token_id || '',
+      preferred_interface: node.pve_preferred_interface || 'eth0',
+      allowed_subnets: node.pve_allowed_subnets || '',
+      verify_ssl: !!node.pve_verify_ssl,
+      has_secret: !!node.pve_has_secret
+    }];
+  } else {
+    nodeProxmoxConfigs = [];
+  }
+
+  renderPveEndpointPills();
+  if (nodeProxmoxConfigs.length > 0) {
+    selectPveEndpoint(nodeProxmoxConfigs[0].id || 'default');
+  } else {
+    addNewPveEndpoint();
+  }
+
+  modal.style.display = 'flex';
+
+  // Fetch freshest configs from server
+  fetch(`/api/cluster/nodes/${encodeURIComponent(nodeId)}/proxmox`)
+    .then(res => {
+      if (!res.ok) throw new Error('Status ' + res.status);
+      return res.json();
+    })
+    .then(data => {
+      if (activePveNodeId !== nodeId) return;
+      if (data.configs && data.configs.length > 0) {
+        nodeProxmoxConfigs = data.configs;
+      } else if (data.url) {
+        nodeProxmoxConfigs = [{
+          id: data.id || 'default',
+          name: data.name || 'Primary Proxmox',
+          enabled: !!data.enabled,
+          url: data.url,
+          node: data.node || '',
+          token_id: data.token_id || '',
+          preferred_interface: data.preferred_interface || 'eth0',
+          allowed_subnets: data.allowed_subnets || '',
+          verify_ssl: !!data.verify_ssl,
+          has_secret: !!data.has_secret
+        }];
+      } else {
+        nodeProxmoxConfigs = [];
+      }
+
+      renderPveEndpointPills();
+      const currentSelected = nodeProxmoxConfigs.find(c => c.id === activePveConfigId);
+      if (currentSelected) {
+        selectPveEndpoint(currentSelected.id);
+      } else if (nodeProxmoxConfigs.length > 0) {
+        selectPveEndpoint(nodeProxmoxConfigs[0].id);
+      } else {
+        addNewPveEndpoint();
+      }
+    })
+    .catch(err => console.warn('Could not fetch node proxmox configs:', err));
+}
+
+function renderPveEndpointPills() {
+  const container = document.getElementById('pve-endpoints-pills');
+  const countSpan = document.getElementById('pve-endpoints-count');
+  if (countSpan) countSpan.textContent = nodeProxmoxConfigs.length;
+  if (!container) return;
+
+  container.innerHTML = '';
+
+  if (nodeProxmoxConfigs.length === 0 && activePveConfigId === 'new') {
+    const pill = document.createElement('div');
+    pill.className = 'pve-endpoint-pill active';
+    pill.innerHTML = `<span class="pill-dot"></span><span>New Endpoint</span>`;
+    container.appendChild(pill);
+    return;
+  }
+
+  nodeProxmoxConfigs.forEach((cfg, idx) => {
+    const pill = document.createElement('div');
+    const isAct = (cfg.id === activePveConfigId);
+    pill.className = `pve-endpoint-pill ${isAct ? 'active' : ''} ${cfg.enabled ? 'enabled' : 'disabled'}`;
+    const nameStr = cfg.name || cfg.url || `Proxmox #${idx + 1}`;
+    pill.innerHTML = `<span class="pill-dot"></span><span>${escapeHtml(nameStr)}</span>`;
+    pill.onclick = () => selectPveEndpoint(cfg.id);
+    container.appendChild(pill);
+  });
+
+  if (activePveConfigId === 'new') {
+    const pill = document.createElement('div');
+    pill.className = 'pve-endpoint-pill active';
+    pill.innerHTML = `<span class="pill-dot"></span><span>＋ New Endpoint</span>`;
+    container.appendChild(pill);
+  }
+}
+
+function selectPveEndpoint(configId) {
+  activePveConfigId = configId;
+  renderPveEndpointPills();
+
+  const cfg = nodeProxmoxConfigs.find(c => c.id === configId);
+  const nameInput = document.getElementById('pve-modal-name');
+  const idInput = document.getElementById('pve-modal-endpoint-id');
   const enabledInput = document.getElementById('pve-modal-enabled');
   const urlInput = document.getElementById('pve-modal-url');
   const nodeInput = document.getElementById('pve-modal-target-node');
@@ -1867,76 +1978,85 @@ function openProxmoxModal(nodeId) {
   const ifaceInput = document.getElementById('pve-modal-interface');
   const subnetsInput = document.getElementById('pve-modal-subnets');
   const verifySSLInput = document.getElementById('pve-modal-verify-ssl');
+  const delBtn = document.getElementById('btn-delete-pve-endpoint');
+  const resultDiv = document.getElementById('pve-test-result');
 
-  if (node) {
-    if (enabledInput) enabledInput.checked = !!(node.pve_enabled || (node.overview && node.overview.pve_enabled));
-    if (urlInput) urlInput.value = node.pve_url || (node.overview && node.overview.pve_url) || '';
-    if (nodeInput) nodeInput.value = node.pve_node || (node.overview && node.overview.pve_node) || '';
-    if (tokenIdInput) tokenIdInput.value = node.pve_token_id || '';
-    if (ifaceInput) ifaceInput.value = node.pve_preferred_interface || 'eth0';
-    if (subnetsInput) subnetsInput.value = node.pve_allowed_subnets || '';
-    if (verifySSLInput) verifySSLInput.checked = !!node.pve_verify_ssl;
+  if (resultDiv) {
+    resultDiv.style.display = 'none';
+    resultDiv.innerHTML = '';
+  }
+
+  if (cfg) {
+    if (nameInput) nameInput.value = cfg.name || '';
+    if (idInput) idInput.value = cfg.id || '';
+    if (enabledInput) enabledInput.checked = !!cfg.enabled;
+    if (urlInput) urlInput.value = cfg.url || '';
+    if (nodeInput) nodeInput.value = cfg.node || '';
+    if (tokenIdInput) tokenIdInput.value = cfg.token_id || '';
+    if (ifaceInput) ifaceInput.value = cfg.preferred_interface || 'eth0';
+    if (subnetsInput) subnetsInput.value = cfg.allowed_subnets || '';
+    if (verifySSLInput) verifySSLInput.checked = !!cfg.verify_ssl;
 
     if (secretInput) {
       secretInput.value = '';
-      if (node.pve_has_secret) {
+      if (cfg.has_secret) {
         secretInput.placeholder = '•••••••• (leave blank to keep existing secret)';
       } else {
         secretInput.placeholder = 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx';
       }
     }
-  } else {
-    if (enabledInput) enabledInput.checked = false;
-    if (urlInput) urlInput.value = '';
-    if (nodeInput) nodeInput.value = '';
-    if (tokenIdInput) tokenIdInput.value = '';
-    if (ifaceInput) ifaceInput.value = 'eth0';
-    if (subnetsInput) subnetsInput.value = '';
-    if (verifySSLInput) verifySSLInput.checked = false;
-    if (secretInput) {
-      secretInput.value = '';
-      secretInput.placeholder = 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx';
-    }
+
+    if (delBtn) delBtn.style.display = 'inline-flex';
+  }
+}
+
+function addNewPveEndpoint() {
+  activePveConfigId = 'new';
+  renderPveEndpointPills();
+
+  const nameInput = document.getElementById('pve-modal-name');
+  const idInput = document.getElementById('pve-modal-endpoint-id');
+  const enabledInput = document.getElementById('pve-modal-enabled');
+  const urlInput = document.getElementById('pve-modal-url');
+  const nodeInput = document.getElementById('pve-modal-target-node');
+  const tokenIdInput = document.getElementById('pve-modal-token-id');
+  const secretInput = document.getElementById('pve-modal-token-secret');
+  const ifaceInput = document.getElementById('pve-modal-interface');
+  const subnetsInput = document.getElementById('pve-modal-subnets');
+  const verifySSLInput = document.getElementById('pve-modal-verify-ssl');
+  const delBtn = document.getElementById('btn-delete-pve-endpoint');
+  const resultDiv = document.getElementById('pve-test-result');
+
+  if (resultDiv) {
+    resultDiv.style.display = 'none';
+    resultDiv.innerHTML = '';
   }
 
-  modal.style.display = 'flex';
+  if (nameInput) nameInput.value = `Proxmox Endpoint ${nodeProxmoxConfigs.length + 1}`;
+  if (idInput) idInput.value = '';
+  if (enabledInput) enabledInput.checked = true;
+  if (urlInput) {
+    urlInput.value = '';
+    urlInput.focus();
+  }
+  if (nodeInput) nodeInput.value = '';
+  if (tokenIdInput) tokenIdInput.value = '';
+  if (ifaceInput) ifaceInput.value = 'eth0';
+  if (subnetsInput) subnetsInput.value = '';
+  if (verifySSLInput) verifySSLInput.checked = false;
+  if (secretInput) {
+    secretInput.value = '';
+    secretInput.placeholder = 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx';
+  }
 
-  // Fetch freshest config from server
-  fetch(`/api/cluster/nodes/${encodeURIComponent(nodeId)}/proxmox`)
-    .then(res => {
-      if (!res.ok) throw new Error('Status ' + res.status);
-      return res.json();
-    })
-    .then(cfg => {
-      if (cfg && activePveNodeId === nodeId) {
-        if (enabledInput) enabledInput.checked = !!cfg.enabled;
-        if (urlInput && cfg.url) urlInput.value = cfg.url;
-        if (nodeInput && cfg.node) nodeInput.value = cfg.node;
-        if (tokenIdInput && cfg.token_id) tokenIdInput.value = cfg.token_id;
-        if (ifaceInput) ifaceInput.value = cfg.preferred_interface || 'eth0';
-        if (subnetsInput) subnetsInput.value = cfg.allowed_subnets || '';
-        if (verifySSLInput) verifySSLInput.checked = !!cfg.verify_ssl;
-        if (secretInput && cfg.has_secret) {
-          secretInput.placeholder = '•••••••• (leave blank to keep existing secret)';
-        }
-      }
-    })
-    .catch(err => console.warn('Could not fetch node proxmox config:', err));
+  if (delBtn) delBtn.style.display = 'none';
 }
-
-function closeProxmoxModal() {
-  const modal = document.getElementById('proxmox-config-modal');
-  if (modal) modal.style.display = 'none';
-  activePveNodeId = null;
-}
-
-window.openProxmoxModal = openProxmoxModal;
-window.closeProxmoxModal = closeProxmoxModal;
 
 async function testProxmoxConnection() {
   const btn = document.getElementById('btn-test-pve-conn');
   const btnText = document.getElementById('btn-test-pve-conn-text');
   const resultDiv = document.getElementById('pve-test-result');
+  const configId = (document.getElementById('pve-modal-endpoint-id')?.value || '').trim();
   const url = (document.getElementById('pve-modal-url')?.value || '').trim();
   const tokenId = (document.getElementById('pve-modal-token-id')?.value || '').trim();
   const secret = (document.getElementById('pve-modal-token-secret')?.value || '').trim();
@@ -1969,6 +2089,7 @@ async function testProxmoxConnection() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         node_id: activePveNodeId,
+        config_id: configId,
         url: url,
         token_id: tokenId,
         token_secret: secret,
@@ -2005,6 +2126,8 @@ async function saveProxmoxConfig() {
 
   const btn = document.getElementById('btn-save-pve-config');
   const btnText = document.getElementById('btn-save-pve-config-text');
+  let configId = (document.getElementById('pve-modal-endpoint-id')?.value || '').trim();
+  const name = (document.getElementById('pve-modal-name')?.value || '').trim();
   const enabled = document.getElementById('pve-modal-enabled')?.checked ?? false;
   const url = (document.getElementById('pve-modal-url')?.value || '').trim();
   const node = (document.getElementById('pve-modal-target-node')?.value || '').trim();
@@ -2019,6 +2142,10 @@ async function saveProxmoxConfig() {
     return;
   }
 
+  if (activePveConfigId === 'new' || !configId) {
+    configId = `pve-${Date.now()}`;
+  }
+
   if (btn) btn.disabled = true;
   if (btnText) btnText.textContent = 'Saving...';
 
@@ -2027,6 +2154,8 @@ async function saveProxmoxConfig() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        id: configId,
+        name: name || url,
         enabled: enabled,
         url: url,
         token_id: tokenId,
@@ -2044,21 +2173,90 @@ async function saveProxmoxConfig() {
     }
 
     const data = await res.json();
-    showToast(enabled ? `Proxmox LXC discovery enabled for ${activePveNodeId}!` : `Proxmox discovery disabled for ${activePveNodeId}`, 'success');
-    closeProxmoxModal();
+    showToast(`Proxmox endpoint "${name || url || configId}" saved successfully!`, 'success');
 
-    // Refresh cluster nodes and overview
+    // Reload configs for this node
+    const getRes = await fetch(`/api/cluster/nodes/${encodeURIComponent(activePveNodeId)}/proxmox`);
+    if (getRes.ok) {
+      const freshData = await getRes.json();
+      nodeProxmoxConfigs = freshData.configs || [];
+      activePveConfigId = configId;
+      renderPveEndpointPills();
+      selectPveEndpoint(configId);
+    }
+
+    // Refresh cluster nodes and status overview
     fetchClusterNodes();
-    fetchStatusOverview();
+    fetchStatus();
     // Trigger immediate sync
     fetch('/api/sync', { method: 'POST' }).catch(() => {});
   } catch (err) {
     showToast(`Failed to save Proxmox config: ${err.message}`, 'error');
   } finally {
     if (btn) btn.disabled = false;
-    if (btnText) btnText.textContent = 'Save & Apply';
+    if (btnText) btnText.textContent = 'Save Endpoint';
   }
 }
+
+async function deleteCurrentPveEndpoint() {
+  if (!activePveNodeId || !activePveConfigId || activePveConfigId === 'new') return;
+
+  const cfg = nodeProxmoxConfigs.find(c => c.id === activePveConfigId);
+  const displayName = cfg ? (cfg.name || cfg.url || cfg.id) : activePveConfigId;
+  if (!confirm(`Are you sure you want to remove Proxmox endpoint "${displayName}" from node "${activePveNodeId}"?`)) {
+    return;
+  }
+
+  const btn = document.getElementById('btn-delete-pve-endpoint');
+  if (btn) btn.disabled = true;
+
+  try {
+    const res = await fetch(`/api/cluster/nodes/${encodeURIComponent(activePveNodeId)}/proxmox?id=${encodeURIComponent(activePveConfigId)}`, {
+      method: 'DELETE'
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(errText || `Server responded with ${res.status}`);
+    }
+
+    showToast(`Removed Proxmox endpoint "${displayName}"`, 'info');
+
+    // Reload configs
+    const getRes = await fetch(`/api/cluster/nodes/${encodeURIComponent(activePveNodeId)}/proxmox`);
+    if (getRes.ok) {
+      const freshData = await getRes.json();
+      nodeProxmoxConfigs = freshData.configs || [];
+      if (nodeProxmoxConfigs.length > 0) {
+        selectPveEndpoint(nodeProxmoxConfigs[0].id);
+      } else {
+        addNewPveEndpoint();
+      }
+    }
+
+    fetchClusterNodes();
+    fetchStatus();
+    fetch('/api/sync', { method: 'POST' }).catch(() => {});
+  } catch (err) {
+    showToast(`Failed to delete Proxmox endpoint: ${err.message}`, 'error');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+function closeProxmoxModal() {
+  const modal = document.getElementById('proxmox-config-modal');
+  if (modal) modal.style.display = 'none';
+  activePveNodeId = null;
+  activePveConfigId = null;
+  nodeProxmoxConfigs = [];
+}
+
+window.openProxmoxModal = openProxmoxModal;
+window.closeProxmoxModal = closeProxmoxModal;
+window.addNewPveEndpoint = addNewPveEndpoint;
+window.deleteCurrentPveEndpoint = deleteCurrentPveEndpoint;
+window.selectPveEndpoint = selectPveEndpoint;
 
 function initProxmoxModal() {
   const modal = document.getElementById('proxmox-config-modal');

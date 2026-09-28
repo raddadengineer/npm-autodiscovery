@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/fs"
 	"log"
 	"net/http"
@@ -382,14 +383,15 @@ func (s *Server) handleClusterReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pveCfg := s.syncer.GetNodePVEConfig(report.NodeID)
+	pveConfigs := s.syncer.GetNodePVEConfigs(report.NodeID)
 	resp := map[string]interface{}{
 		"status":  "ok",
 		"message": "Telemetry report successfully ingested",
 		"node_id": report.NodeID,
 	}
-	if pveCfg != nil {
-		resp["pve_config"] = pveCfg
+	if len(pveConfigs) > 0 {
+		resp["pve_configs"] = pveConfigs
+		resp["pve_config"] = pveConfigs[0]
 	}
 
 	s.writeJSON(w, http.StatusOK, resp)
@@ -433,7 +435,7 @@ func (s *Server) handleClusterSetupInfo(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
-// handleNodeProxmox gets or updates Proxmox configuration for a specific cluster node.
+// handleNodeProxmox gets, updates, or deletes Proxmox configurations for a specific cluster node.
 func (s *Server) handleNodeProxmox(w http.ResponseWriter, r *http.Request) {
 	nodeID := r.PathValue("nodeId")
 	if nodeID == "" {
@@ -449,19 +451,92 @@ func (s *Server) handleNodeProxmox(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodGet:
-		cfg := s.syncer.GetNodePVEConfig(nodeID)
-		if cfg == nil {
-			cfg = &syncer.PVEConfig{
+		cfgs := s.syncer.GetNodePVEConfigs(nodeID)
+		primary := s.syncer.GetNodePVEConfig(nodeID)
+		if primary == nil {
+			primary = &syncer.PVEConfig{
 				Enabled: false,
 			}
 		}
-		cfgResp := *cfg
-		cfgResp.TokenSecret = "" // mask secret
-		s.writeJSON(w, http.StatusOK, cfgResp)
+
+		safeCfgs := make([]syncer.PVEConfig, len(cfgs))
+		for i, c := range cfgs {
+			cp := c
+			cp.TokenSecret = "" // mask secret
+			safeCfgs[i] = cp
+		}
+
+		resp := map[string]interface{}{
+			"configs":             safeCfgs,
+			"enabled":             primary.Enabled,
+			"url":                 primary.URL,
+			"token_id":            primary.TokenID,
+			"token_secret":        "",
+			"node":                primary.Node,
+			"verify_ssl":          primary.VerifySSL,
+			"preferred_interface": primary.PreferredInterface,
+			"allowed_subnets":     primary.AllowedSubnets,
+			"has_secret":          primary.HasSecret,
+			"id":                  primary.ID,
+			"name":                primary.Name,
+		}
+		s.writeJSON(w, http.StatusOK, resp)
 
 	case http.MethodPost:
+		rawBytes, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, "Failed reading request body", http.StatusBadRequest)
+			return
+		}
+
+		var body map[string]interface{}
+		if err := json.Unmarshal(rawBytes, &body); err != nil {
+			http.Error(w, fmt.Sprintf("Invalid JSON: %v", err), http.StatusBadRequest)
+			return
+		}
+
+		action, _ := body["action"].(string)
+		if strings.EqualFold(action, "delete") {
+			configID, _ := body["id"].(string)
+			if configID == "" {
+				http.Error(w, "Config ID required for deletion", http.StatusBadRequest)
+				return
+			}
+			if err := s.syncer.DeleteNodePVEConfig(nodeID, configID); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			s.writeJSON(w, http.StatusOK, map[string]interface{}{
+				"status":  "ok",
+				"message": fmt.Sprintf("Proxmox VE configuration '%s' deleted for node '%s'", configID, nodeID),
+				"node_id": nodeID,
+			})
+			return
+		}
+
+		if _, hasConfigs := body["configs"]; hasConfigs {
+			var bulkReq struct {
+				Configs []syncer.PVEConfig `json:"configs"`
+			}
+			if err := json.Unmarshal(rawBytes, &bulkReq); err != nil {
+				http.Error(w, fmt.Sprintf("Invalid JSON: %v", err), http.StatusBadRequest)
+				return
+			}
+			if err := s.syncer.SetNodePVEConfigs(nodeID, bulkReq.Configs); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			s.writeJSON(w, http.StatusOK, map[string]interface{}{
+				"status":  "ok",
+				"message": fmt.Sprintf("Proxmox VE configurations updated for node '%s'", nodeID),
+				"node_id": nodeID,
+				"count":   len(bulkReq.Configs),
+			})
+			return
+		}
+
 		var pveCfg syncer.PVEConfig
-		if err := json.NewDecoder(r.Body).Decode(&pveCfg); err != nil {
+		if err := json.Unmarshal(rawBytes, &pveCfg); err != nil {
 			http.Error(w, fmt.Sprintf("Invalid JSON: %v", err), http.StatusBadRequest)
 			return
 		}
@@ -472,10 +547,27 @@ func (s *Server) handleNodeProxmox(w http.ResponseWriter, r *http.Request) {
 		}
 
 		s.writeJSON(w, http.StatusOK, map[string]interface{}{
+			"status":    "ok",
+			"message":   fmt.Sprintf("Proxmox VE configuration updated for node '%s'", nodeID),
+			"node_id":   nodeID,
+			"config_id": pveCfg.ID,
+			"enabled":   pveCfg.Enabled,
+		})
+
+	case http.MethodDelete:
+		configID := r.URL.Query().Get("id")
+		if configID == "" {
+			http.Error(w, "Query parameter 'id' required for deletion", http.StatusBadRequest)
+			return
+		}
+		if err := s.syncer.DeleteNodePVEConfig(nodeID, configID); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		s.writeJSON(w, http.StatusOK, map[string]interface{}{
 			"status":  "ok",
-			"message": fmt.Sprintf("Proxmox VE configuration updated for node '%s'", nodeID),
+			"message": fmt.Sprintf("Proxmox VE configuration '%s' deleted for node '%s'", configID, nodeID),
 			"node_id": nodeID,
-			"enabled": pveCfg.Enabled,
 		})
 
 	default:
@@ -483,7 +575,7 @@ func (s *Server) handleNodeProxmox(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// handleLocalProxmoxConfig gets or updates Proxmox configuration for the local node.
+// handleLocalProxmoxConfig gets, updates, or deletes Proxmox configurations for the local node.
 func (s *Server) handleLocalProxmoxConfig(w http.ResponseWriter, r *http.Request) {
 	nodeID := s.cfg.HostID
 	if nodeID == "" {
@@ -492,15 +584,34 @@ func (s *Server) handleLocalProxmoxConfig(w http.ResponseWriter, r *http.Request
 
 	switch r.Method {
 	case http.MethodGet:
-		cfg := s.syncer.GetNodePVEConfig(nodeID)
-		if cfg == nil {
-			cfg = &syncer.PVEConfig{
+		cfgs := s.syncer.GetNodePVEConfigs(nodeID)
+		primary := s.syncer.GetNodePVEConfig(nodeID)
+		if primary == nil {
+			primary = &syncer.PVEConfig{
 				Enabled: false,
 			}
 		}
-		cfgResp := *cfg
-		cfgResp.TokenSecret = ""
-		s.writeJSON(w, http.StatusOK, cfgResp)
+		safeCfgs := make([]syncer.PVEConfig, len(cfgs))
+		for i, c := range cfgs {
+			cp := c
+			cp.TokenSecret = ""
+			safeCfgs[i] = cp
+		}
+		resp := map[string]interface{}{
+			"configs":             safeCfgs,
+			"enabled":             primary.Enabled,
+			"url":                 primary.URL,
+			"token_id":            primary.TokenID,
+			"token_secret":        "",
+			"node":                primary.Node,
+			"verify_ssl":          primary.VerifySSL,
+			"preferred_interface": primary.PreferredInterface,
+			"allowed_subnets":     primary.AllowedSubnets,
+			"has_secret":          primary.HasSecret,
+			"id":                  primary.ID,
+			"name":                primary.Name,
+		}
+		s.writeJSON(w, http.StatusOK, resp)
 
 	case http.MethodPost:
 		var pveCfg syncer.PVEConfig
@@ -535,6 +646,7 @@ func (s *Server) handleProxmoxTest(w http.ResponseWriter, r *http.Request) {
 
 	var req struct {
 		NodeID             string `json:"node_id"`
+		ConfigID           string `json:"config_id"`
 		URL                string `json:"url"`
 		TokenID            string `json:"token_id"`
 		TokenSecret        string `json:"token_secret"`
@@ -559,8 +671,15 @@ func (s *Server) handleProxmoxTest(w http.ResponseWriter, r *http.Request) {
 
 	secret := req.TokenSecret
 	if secret == "" && req.NodeID != "" {
-		if existing := s.syncer.GetNodePVEConfig(req.NodeID); existing != nil && existing.TokenSecret != "" {
-			secret = existing.TokenSecret
+		if req.ConfigID != "" {
+			if existing := s.syncer.GetNodePVEConfigByID(req.NodeID, req.ConfigID); existing != nil && existing.TokenSecret != "" {
+				secret = existing.TokenSecret
+			}
+		}
+		if secret == "" {
+			if existing := s.syncer.GetNodePVEConfig(req.NodeID); existing != nil && existing.TokenSecret != "" {
+				secret = existing.TokenSecret
+			}
 		}
 	}
 	if secret == "" && (req.NodeID == "" || req.NodeID == s.cfg.HostID) {

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -163,6 +164,7 @@ func TestClusterReportAndNodesEndpoints(t *testing.T) {
 }
 
 func TestProxmoxEndpoints(t *testing.T) {
+	t.Setenv("DATA_DIR", t.TempDir())
 	cfg := &config.Config{
 		HostID:       "controller-node",
 		HostIP:       "192.168.1.10",
@@ -232,6 +234,57 @@ func TestProxmoxEndpoints(t *testing.T) {
 	srv.handleProxmoxTest(rr, req)
 	if rr.Code != http.StatusBadRequest {
 		t.Errorf("expected HTTP 400 for empty URL, got %d", rr.Code)
+	}
+
+	// 5. Test adding a second PVE endpoint to worker-node-1
+	pveJSON2 := `{
+		"id": "pve-backup",
+		"name": "Backup Proxmox",
+		"enabled": true,
+		"url": "https://192.168.1.200:8006",
+		"token_id": "root@pam!backup",
+		"token_secret": "my-secret-2",
+		"node": "pve2"
+	}`
+	req = httptest.NewRequest(http.MethodPost, "/api/cluster/nodes/worker-node-1/proxmox", strings.NewReader(pveJSON2))
+	req.SetPathValue("nodeId", "worker-node-1")
+	rr = httptest.NewRecorder()
+	srv.handleNodeProxmox(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected HTTP 200 adding 2nd PVE config, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	// 6. Test GET returns both configs
+	req = httptest.NewRequest(http.MethodGet, "/api/cluster/nodes/worker-node-1/proxmox", nil)
+	req.SetPathValue("nodeId", "worker-node-1")
+	rr = httptest.NewRecorder()
+	srv.handleNodeProxmox(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected HTTP 200, got %d", rr.Code)
+	}
+	var getResp struct {
+		Configs []syncer.PVEConfig `json:"configs"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &getResp); err != nil {
+		t.Fatalf("failed decoding GET response: %v", err)
+	}
+	if len(getResp.Configs) != 2 {
+		t.Fatalf("expected 2 configs in GET response, got %d", len(getResp.Configs))
+	}
+
+	// 7. Test DELETE endpoint
+	req = httptest.NewRequest(http.MethodDelete, "/api/cluster/nodes/worker-node-1/proxmox?id=pve-backup", nil)
+	req.SetPathValue("nodeId", "worker-node-1")
+	rr = httptest.NewRecorder()
+	srv.handleNodeProxmox(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected HTTP 200 on DELETE, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	// Verify count is now 1
+	cfgsNow := syncEngine.GetNodePVEConfigs("worker-node-1")
+	if len(cfgsNow) != 1 {
+		t.Fatalf("expected 1 config after DELETE, got %d", len(cfgsNow))
 	}
 }
 

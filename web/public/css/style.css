@@ -1477,6 +1477,60 @@ body {
   color: #38bdf8 !important;
 }
 
+/* Multi-Endpoint Proxmox Styles */
+.pve-endpoints-pills-list {
+  display: flex;
+  gap: 0.5rem;
+  overflow-x: auto;
+  padding: 0.2rem 0.1rem 0.4rem 0.1rem;
+  scrollbar-width: thin;
+}
+
+.pve-endpoint-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.45rem 0.85rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+  background: rgba(30, 41, 59, 0.6);
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all var(--transition-fast);
+}
+
+.pve-endpoint-pill:hover {
+  background: rgba(51, 65, 85, 0.8);
+  color: var(--text-primary);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.pve-endpoint-pill.active {
+  background: rgba(56, 189, 248, 0.15);
+  color: var(--accent-cyan);
+  border-color: rgba(56, 189, 248, 0.6);
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.2);
+}
+
+.pve-endpoint-pill .pill-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #64748b;
+}
+
+.pve-endpoint-pill.enabled .pill-dot {
+  background: #10b981;
+  box-shadow: 0 0 6px #10b981;
+}
+
+.pve-endpoint-pill.disabled .pill-dot {
+  background: #64748b;
+}
+
 /* ==============================================================================
    Mobile Responsiveness & Touch Friendly Ergonomics (v2.0.1)
    ============================================================================== */

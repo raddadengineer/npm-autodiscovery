@@ -361,9 +361,15 @@ func (c *Client) DiscoverRoutes(
 	defaultBlockExploits bool,
 ) ([]PVERoute, []PVEStream, []LXCContainerSummary, error) {
 	var targetNodes []string
-	if c.node != "" {
-		targetNodes = []string{c.node}
-	} else {
+	if strings.TrimSpace(c.node) != "" {
+		for _, n := range strings.Split(c.node, ",") {
+			n = strings.TrimSpace(n)
+			if n != "" {
+				targetNodes = append(targetNodes, n)
+			}
+		}
+	}
+	if len(targetNodes) == 0 {
 		onlineNodes, err := c.GetNodes(ctx)
 		if err != nil {
 			return nil, nil, nil, fmt.Errorf("failed listing nodes: %w", err)

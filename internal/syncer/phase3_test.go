@@ -300,3 +300,63 @@ func TestStatusOverviewHypervisors(t *testing.T) {
 		t.Errorf("expected container views to include both pve and lxd sources")
 	}
 }
+
+func TestMultiPVEManagement(t *testing.T) {
+	t.Setenv("DATA_DIR", t.TempDir())
+	cfg := &config.Config{
+		HostID: "test-node",
+	}
+	s := NewSyncer(cfg, nil, nil)
+
+	// Add first PVE config
+	cfg1 := PVEConfig{
+		ID:      "pve-1",
+		Name:    "Homelab PVE 1",
+		Enabled: true,
+		URL:     "https://192.168.1.10:8006",
+		Node:    "pve1",
+	}
+	if err := s.SetNodePVEConfig("test-node", cfg1); err != nil {
+		t.Fatalf("failed SetNodePVEConfig 1: %v", err)
+	}
+
+	// Add second PVE config
+	cfg2 := PVEConfig{
+		ID:      "pve-2",
+		Name:    "Backup Cluster",
+		Enabled: true,
+		URL:     "https://192.168.1.20:8006",
+		Node:    "pve2",
+	}
+	if err := s.SetNodePVEConfig("test-node", cfg2); err != nil {
+		t.Fatalf("failed SetNodePVEConfig 2: %v", err)
+	}
+
+	cfgs := s.GetNodePVEConfigs("test-node")
+	if len(cfgs) != 2 {
+		t.Fatalf("expected 2 configs, got %d", len(cfgs))
+	}
+
+	c1 := s.GetNodePVEConfigByID("test-node", "pve-1")
+	if c1 == nil || c1.Name != "Homelab PVE 1" {
+		t.Errorf("expected pve-1 with name 'Homelab PVE 1', got %+v", c1)
+	}
+
+	c2 := s.GetNodePVEConfigByID("test-node", "pve-2")
+	if c2 == nil || c2.Name != "Backup Cluster" {
+		t.Errorf("expected pve-2 with name 'Backup Cluster', got %+v", c2)
+	}
+
+	// Delete pve-1
+	if err := s.DeleteNodePVEConfig("test-node", "pve-1"); err != nil {
+		t.Fatalf("failed DeleteNodePVEConfig: %v", err)
+	}
+
+	cfgsAfter := s.GetNodePVEConfigs("test-node")
+	if len(cfgsAfter) != 1 {
+		t.Fatalf("expected 1 config after deletion, got %d", len(cfgsAfter))
+	}
+	if cfgsAfter[0].ID != "pve-2" {
+		t.Errorf("expected remaining config to be pve-2, got %s", cfgsAfter[0].ID)
+	}
+}
