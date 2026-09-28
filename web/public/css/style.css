@@ -1406,6 +1406,76 @@ body {
 }
 
 /* ==============================================================================
+   Proxmox LXC Discovery Configuration Styles
+   ============================================================================== */
+.pve-enable-banner {
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.9) 100%);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 1rem 1.25rem;
+  margin-bottom: 1rem;
+  transition: border-color var(--transition-normal);
+}
+
+.pve-enable-banner:has(.modern-toggle:checked) {
+  border-color: rgba(56, 189, 248, 0.5);
+  box-shadow: 0 0 16px rgba(56, 189, 248, 0.12);
+}
+
+.modern-toggle {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 48px;
+  height: 26px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 9999px;
+  position: relative;
+  outline: none;
+  cursor: pointer;
+  transition: background 0.25s ease;
+  flex-shrink: 0;
+}
+
+.modern-toggle::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  background: #ffffff;
+  border-radius: 50%;
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.modern-toggle:checked {
+  background: var(--accent-cyan);
+}
+
+.modern-toggle:checked::after {
+  transform: translateX(22px);
+}
+
+.pve-test-success {
+  background: rgba(16, 185, 129, 0.12) !important;
+  border: 1px solid rgba(16, 185, 129, 0.4) !important;
+  color: #34d399 !important;
+}
+
+.pve-test-error {
+  background: rgba(244, 63, 94, 0.12) !important;
+  border: 1px solid rgba(244, 63, 94, 0.4) !important;
+  color: #fb7185 !important;
+}
+
+.pve-test-loading {
+  background: rgba(56, 189, 248, 0.12) !important;
+  border: 1px solid rgba(56, 189, 248, 0.4) !important;
+  color: #38bdf8 !important;
+}
+
+/* ==============================================================================
    Mobile Responsiveness & Touch Friendly Ergonomics (v2.0.1)
    ============================================================================== */
 

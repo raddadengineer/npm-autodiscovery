@@ -13,6 +13,7 @@ import (
 
 	"github.com/raddadengineer/npm-autodiscovery/internal/config"
 	"github.com/raddadengineer/npm-autodiscovery/internal/metrics"
+	"github.com/raddadengineer/npm-autodiscovery/internal/pve"
 	"github.com/raddadengineer/npm-autodiscovery/internal/syncer"
 )
 
@@ -51,6 +52,9 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/cluster/nodes", s.handleClusterNodes)
 	mux.HandleFunc("/api/cluster/report", s.handleClusterReport)
 	mux.HandleFunc("/api/cluster/setup-info", s.handleClusterSetupInfo)
+	mux.HandleFunc("/api/cluster/nodes/{nodeId}/proxmox", s.handleNodeProxmox)
+	mux.HandleFunc("/api/proxmox/config", s.handleLocalProxmoxConfig)
+	mux.HandleFunc("/api/proxmox/test", s.handleProxmoxTest)
 
 	// Prometheus Metrics Endpoint (Phase 1)
 	mux.HandleFunc("/metrics", s.handleMetrics)
@@ -347,11 +351,17 @@ func (s *Server) handleClusterReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.writeJSON(w, http.StatusOK, map[string]interface{}{
+	pveCfg := s.syncer.GetNodePVEConfig(report.NodeID)
+	resp := map[string]interface{}{
 		"status":  "ok",
 		"message": "Telemetry report successfully ingested",
 		"node_id": report.NodeID,
-	})
+	}
+	if pveCfg != nil {
+		resp["pve_config"] = pveCfg
+	}
+
+	s.writeJSON(w, http.StatusOK, resp)
 }
 
 // handleClusterSetupInfo returns configuration parameters needed to provision a new worker node.
@@ -389,6 +399,193 @@ func (s *Server) handleClusterSetupInfo(w http.ResponseWriter, r *http.Request) 
 		"default_websocket":        s.cfg.DefaultWebsocket,
 		"default_block_exploits":   s.cfg.DefaultBlockExploits,
 		"auto_detect_ssl":          s.cfg.AutoDetectSSL,
+	})
+}
+
+// handleNodeProxmox gets or updates Proxmox configuration for a specific cluster node.
+func (s *Server) handleNodeProxmox(w http.ResponseWriter, r *http.Request) {
+	nodeID := r.PathValue("nodeId")
+	if nodeID == "" {
+		parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+		if len(parts) >= 4 {
+			nodeID = parts[3]
+		}
+	}
+	if nodeID == "" {
+		http.Error(w, "Node ID required in URL path", http.StatusBadRequest)
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		cfg := s.syncer.GetNodePVEConfig(nodeID)
+		if cfg == nil {
+			cfg = &syncer.PVEConfig{
+				Enabled: false,
+			}
+		}
+		cfgResp := *cfg
+		cfgResp.TokenSecret = "" // mask secret
+		s.writeJSON(w, http.StatusOK, cfgResp)
+
+	case http.MethodPost:
+		var pveCfg syncer.PVEConfig
+		if err := json.NewDecoder(r.Body).Decode(&pveCfg); err != nil {
+			http.Error(w, fmt.Sprintf("Invalid JSON: %v", err), http.StatusBadRequest)
+			return
+		}
+
+		if err := s.syncer.SetNodePVEConfig(nodeID, pveCfg); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		s.writeJSON(w, http.StatusOK, map[string]interface{}{
+			"status":  "ok",
+			"message": fmt.Sprintf("Proxmox VE configuration updated for node '%s'", nodeID),
+			"node_id": nodeID,
+			"enabled": pveCfg.Enabled,
+		})
+
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// handleLocalProxmoxConfig gets or updates Proxmox configuration for the local node.
+func (s *Server) handleLocalProxmoxConfig(w http.ResponseWriter, r *http.Request) {
+	nodeID := s.cfg.HostID
+	if nodeID == "" {
+		nodeID = "controller-main"
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		cfg := s.syncer.GetNodePVEConfig(nodeID)
+		if cfg == nil {
+			cfg = &syncer.PVEConfig{
+				Enabled: false,
+			}
+		}
+		cfgResp := *cfg
+		cfgResp.TokenSecret = ""
+		s.writeJSON(w, http.StatusOK, cfgResp)
+
+	case http.MethodPost:
+		var pveCfg syncer.PVEConfig
+		if err := json.NewDecoder(r.Body).Decode(&pveCfg); err != nil {
+			http.Error(w, fmt.Sprintf("Invalid JSON: %v", err), http.StatusBadRequest)
+			return
+		}
+
+		if err := s.syncer.SetNodePVEConfig(nodeID, pveCfg); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		s.writeJSON(w, http.StatusOK, map[string]interface{}{
+			"status":  "ok",
+			"message": "Proxmox VE configuration updated for local node",
+			"node_id": nodeID,
+			"enabled": pveCfg.Enabled,
+		})
+
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// handleProxmoxTest tests a Proxmox VE connection using supplied credentials.
+func (s *Server) handleProxmoxTest(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		NodeID             string `json:"node_id"`
+		URL                string `json:"url"`
+		TokenID            string `json:"token_id"`
+		TokenSecret        string `json:"token_secret"`
+		Node               string `json:"node"`
+		VerifySSL          bool   `json:"verify_ssl"`
+		PreferredInterface string `json:"preferred_interface"`
+		AllowedSubnets     string `json:"allowed_subnets"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, fmt.Sprintf("Invalid JSON: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	if req.URL == "" {
+		s.writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"success": false,
+			"error":   "Proxmox VE API URL must not be empty",
+		})
+		return
+	}
+
+	secret := req.TokenSecret
+	if secret == "" && req.NodeID != "" {
+		if existing := s.syncer.GetNodePVEConfig(req.NodeID); existing != nil && existing.TokenSecret != "" {
+			secret = existing.TokenSecret
+		}
+	}
+	if secret == "" && (req.NodeID == "" || req.NodeID == s.cfg.HostID) {
+		secret = s.cfg.PVETokenSecret
+	}
+
+	preferredIface := req.PreferredInterface
+	if preferredIface == "" {
+		preferredIface = "eth0"
+	}
+
+	testClient, err := pve.NewClient(
+		req.URL,
+		req.TokenID,
+		secret,
+		req.Node,
+		req.VerifySSL,
+		6*time.Second,
+		preferredIface,
+		req.AllowedSubnets,
+	)
+	if err != nil {
+		s.writeJSON(w, http.StatusOK, map[string]interface{}{
+			"success": false,
+			"error":   fmt.Sprintf("Failed to initialize test client: %v", err),
+		})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
+	defer cancel()
+
+	if err := testClient.Ping(ctx); err != nil {
+		s.writeJSON(w, http.StatusOK, map[string]interface{}{
+			"success": false,
+			"error":   fmt.Sprintf("Ping failed: %v", err),
+		})
+		return
+	}
+
+	nodes, err := testClient.GetNodes(ctx)
+	if err != nil {
+		s.writeJSON(w, http.StatusOK, map[string]interface{}{
+			"success": true,
+			"version": testClient.Version(),
+			"nodes":   []string{},
+			"message": fmt.Sprintf("Connected to Proxmox VE API %s", testClient.Version()),
+		})
+		return
+	}
+
+	s.writeJSON(w, http.StatusOK, map[string]interface{}{
+		"success": true,
+		"version": testClient.Version(),
+		"nodes":   nodes,
+		"message": fmt.Sprintf("Connected successfully to Proxmox VE %s", testClient.Version()),
 	})
 }
 

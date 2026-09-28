@@ -19,6 +19,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initDocsSubtabs();
   initDocsSearch();
   initAddNodeGenerator();
+  initProxmoxModal();
   loadInitialData();
 
   // Periodic polling for status and tables every 5 seconds as fallback
@@ -1109,7 +1110,13 @@ function renderClusterNodes(filterText = '') {
           </div>
           <div class="node-engine-row">
             <span class="text-muted">⚡ Proxmox VE:</span>
-            <span>${node.pve_connected ? '<span style="color:#10b981; font-weight:600;">Active</span>' : '<span style="color:var(--text-muted);">Disabled</span>'}</span>
+            <span>
+              ${node.pve_connected 
+                ? `<span style="color:#10b981; font-weight:600;">Active</span> <span style="font-size:0.75rem; color:var(--text-muted);">(${escapeHtml(node.pve_version || 'connected')})</span>` 
+                : ((node.pve_enabled || (node.overview && node.overview.pve_enabled))
+                    ? '<span style="color:#f59e0b; font-weight:600;">Enabled (Connecting...)</span>' 
+                    : '<span style="color:var(--text-muted);">Disabled</span>')}
+            </span>
           </div>
           <div class="node-engine-row">
             <span class="text-muted">🐧 LXD / Incus:</span>
@@ -1119,9 +1126,14 @@ function renderClusterNodes(filterText = '') {
 
         <div class="node-card-footer">
           <span style="font-size:0.75rem; color:var(--text-muted);">Uptime: ${escapeHtml(uptimeStr)}</span>
-          <button class="btn btn-secondary btn-sm" onclick="filterContainersByNode('${escapeHtml(nodeId)}')">
-            Inspect Containers
-          </button>
+          <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
+            <button class="btn btn-secondary btn-sm" onclick="openProxmoxModal('${escapeHtml(nodeId)}')">
+              ⚡ Proxmox LXC
+            </button>
+            <button class="btn btn-secondary btn-sm" onclick="filterContainersByNode('${escapeHtml(nodeId)}')">
+              Inspect Containers
+            </button>
+          </div>
         </div>
       `;
 
@@ -1220,6 +1232,29 @@ function initAddNodeGenerator() {
     });
   }
 
+  const pveToggle = document.getElementById('add-node-pve-enabled');
+  if (pveToggle) {
+    pveToggle.addEventListener('change', () => {
+      if (generatedConfigs.run) generateAgentConfig(false);
+    });
+  }
+
+  ['add-node-pve-url', 'add-node-pve-node', 'add-node-pve-token-id', 'add-node-pve-token-secret'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener('input', () => {
+        if (generatedConfigs.run) generateAgentConfig(false);
+      });
+    }
+  });
+
+  const pveSSL = document.getElementById('add-node-pve-verify-ssl');
+  if (pveSSL) {
+    pveSSL.addEventListener('change', () => {
+      if (generatedConfigs.run) generateAgentConfig(false);
+    });
+  }
+
   // Config tab switcher
   document.querySelectorAll('.config-tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -1245,6 +1280,7 @@ function initAddNodeGenerator() {
     if (e.key === 'Escape') {
       closeModal();
       closeAddNodeModal();
+      closeProxmoxModal();
     }
   });
 }
@@ -1351,6 +1387,13 @@ function generateAgentConfig(notify = true) {
   const autoSSL = document.getElementById('node-auto-ssl')?.checked ?? true;
   const npmUser = (clusterSetupInfo?.npm_user || 'admin@example.com');
 
+  const pveEnabled = document.getElementById('add-node-pve-enabled')?.checked ?? false;
+  const pveUrl = (document.getElementById('add-node-pve-url')?.value || '').trim();
+  const pveNode = (document.getElementById('add-node-pve-node')?.value || '').trim();
+  const pveTokenId = (document.getElementById('add-node-pve-token-id')?.value || '').trim();
+  const pveTokenSecret = (document.getElementById('add-node-pve-token-secret')?.value || '').trim();
+  const pveVerifySSL = document.getElementById('add-node-pve-verify-ssl')?.checked ?? false;
+
   pendingProvisionNode = {
     id: nodeId,
     address: agentAddress
@@ -1372,6 +1415,18 @@ function generateAgentConfig(notify = true) {
   }
   if (viewBtn) viewBtn.style.display = 'none';
 
+  let pveDockerRun = '';
+  if (pveEnabled && pveUrl) {
+    pveDockerRun = ` \\
+  -e PVE_ENABLED="true" \\
+  -e PVE_URL="${pveUrl}" \\
+  -e PVE_TOKEN_ID="${pveTokenId}" \\
+  -e PVE_TOKEN_SECRET="${pveTokenSecret}" \\
+  -e PVE_NODE="${pveNode}" \\
+  -e PVE_VERIFY_SSL="${pveVerifySSL ? 'true' : 'false'}" \\
+  -e PVE_PREFERRED_INTERFACE="eth0"`;
+  }
+
   // 1. Docker Run Command
   const dockerRunCmd = `docker run -d \\
   --name npm-autodiscovery-worker \\
@@ -1387,8 +1442,21 @@ function generateAgentConfig(notify = true) {
   -e DASHBOARD_ENABLED="${headlessMode ? 'false' : 'true'}" \\
   -e MAIN_NODE_URL="${mainNodeUrl}" \\
   -e CLUSTER_TOKEN="${clusterToken}" \\
-  -e PUSH_INTERVAL="15s" \\
+  -e PUSH_INTERVAL="15s"${pveDockerRun} \\
   raddadengineer/npm-autodiscovery:latest`;
+
+  let pveComposeBlock = '';
+  if (pveEnabled && pveUrl) {
+    pveComposeBlock = `
+    environment:
+      - PVE_ENABLED=true
+      - PVE_URL=\${PVE_URL:-${pveUrl}}
+      - PVE_TOKEN_ID=\${PVE_TOKEN_ID:-${pveTokenId}}
+      - PVE_TOKEN_SECRET=\${PVE_TOKEN_SECRET:-${pveTokenSecret}}
+      - PVE_NODE=\${PVE_NODE:-${pveNode}}
+      - PVE_VERIFY_SSL=${pveVerifySSL ? 'true' : 'false'}
+      - PVE_PREFERRED_INTERFACE=eth0`;
+  }
 
   // 2. Docker Compose
   const dockerComposeYaml = `services:
@@ -1404,7 +1472,21 @@ function generateAgentConfig(notify = true) {
       - .env
     volumes:
       # Read-only Docker socket mapping allows listening to local container events
-      - /var/run/docker.sock:/var/run/docker.sock:ro`;
+      - /var/run/docker.sock:/var/run/docker.sock:ro${pveComposeBlock}`;
+
+  let pveEnvBlock = '';
+  if (pveEnabled && pveUrl) {
+    pveEnvBlock = `
+# Proxmox VE (PVE) LXC Auto-Discovery
+PVE_ENABLED=true
+PVE_URL=${pveUrl}
+PVE_TOKEN_ID=${pveTokenId}
+PVE_TOKEN_SECRET=${pveTokenSecret}
+PVE_NODE=${pveNode}
+PVE_VERIFY_SSL=${pveVerifySSL ? 'true' : 'false'}
+PVE_PREFERRED_INTERFACE=eth0
+`;
+  }
 
   // 3. .env file
   const envContent = `# ==============================================================================
@@ -1440,7 +1522,7 @@ LOG_LEVEL=info
 MAIN_NODE_URL=${mainNodeUrl}
 CLUSTER_TOKEN=${clusterToken}
 PUSH_INTERVAL=15s
-`;
+${pveEnvBlock}`;
 
   // 4. Test Service (whoami)
   const whoamiYaml = `services:
@@ -1609,5 +1691,241 @@ function viewConnectedNode(nodeId) {
     }
   }, 100);
 }
+
+/* ==============================================================================
+   Proxmox VE LXC Discovery Modal Handlers
+   ============================================================================== */
+let activePveNodeId = null;
+
+function openProxmoxModal(nodeId) {
+  activePveNodeId = nodeId;
+  const modal = document.getElementById('proxmox-config-modal');
+  const badge = document.getElementById('pve-modal-node-badge');
+  const resultDiv = document.getElementById('pve-test-result');
+  if (badge) badge.textContent = nodeId;
+  if (resultDiv) {
+    resultDiv.style.display = 'none';
+    resultDiv.className = '';
+    resultDiv.innerHTML = '';
+  }
+
+  // Find node in clusterData for initial quick values
+  const node = clusterData.find(n => n.node_id === nodeId || (n.is_controller && (nodeId === 'controller-main' || nodeId === 'local')));
+  const enabledInput = document.getElementById('pve-modal-enabled');
+  const urlInput = document.getElementById('pve-modal-url');
+  const nodeInput = document.getElementById('pve-modal-target-node');
+  const tokenIdInput = document.getElementById('pve-modal-token-id');
+  const secretInput = document.getElementById('pve-modal-token-secret');
+  const ifaceInput = document.getElementById('pve-modal-interface');
+  const subnetsInput = document.getElementById('pve-modal-subnets');
+  const verifySSLInput = document.getElementById('pve-modal-verify-ssl');
+
+  if (node) {
+    if (enabledInput) enabledInput.checked = !!(node.pve_enabled || (node.overview && node.overview.pve_enabled));
+    if (urlInput) urlInput.value = node.pve_url || (node.overview && node.overview.pve_url) || '';
+    if (nodeInput) nodeInput.value = node.pve_node || (node.overview && node.overview.pve_node) || '';
+    if (tokenIdInput) tokenIdInput.value = node.pve_token_id || '';
+    if (ifaceInput) ifaceInput.value = node.pve_preferred_interface || 'eth0';
+    if (subnetsInput) subnetsInput.value = node.pve_allowed_subnets || '';
+    if (verifySSLInput) verifySSLInput.checked = !!node.pve_verify_ssl;
+
+    if (secretInput) {
+      secretInput.value = '';
+      if (node.pve_has_secret) {
+        secretInput.placeholder = '•••••••• (leave blank to keep existing secret)';
+      } else {
+        secretInput.placeholder = 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx';
+      }
+    }
+  }
+
+  if (modal) modal.style.display = 'flex';
+
+  // Fetch freshest config from server
+  fetch(`/api/cluster/nodes/${encodeURIComponent(nodeId)}/proxmox`)
+    .then(res => {
+      if (!res.ok) throw new Error('Status ' + res.status);
+      return res.json();
+    })
+    .then(cfg => {
+      if (cfg && activePveNodeId === nodeId) {
+        if (enabledInput) enabledInput.checked = !!cfg.enabled;
+        if (urlInput && cfg.url) urlInput.value = cfg.url;
+        if (nodeInput && cfg.node) nodeInput.value = cfg.node;
+        if (tokenIdInput && cfg.token_id) tokenIdInput.value = cfg.token_id;
+        if (ifaceInput) ifaceInput.value = cfg.preferred_interface || 'eth0';
+        if (subnetsInput) subnetsInput.value = cfg.allowed_subnets || '';
+        if (verifySSLInput) verifySSLInput.checked = !!cfg.verify_ssl;
+        if (secretInput && cfg.has_secret) {
+          secretInput.placeholder = '•••••••• (leave blank to keep existing secret)';
+        }
+      }
+    })
+    .catch(err => console.warn('Could not fetch node proxmox config:', err));
+}
+
+function closeProxmoxModal() {
+  const modal = document.getElementById('proxmox-config-modal');
+  if (modal) modal.style.display = 'none';
+  activePveNodeId = null;
+}
+
+async function testProxmoxConnection() {
+  const btn = document.getElementById('btn-test-pve-conn');
+  const btnText = document.getElementById('btn-test-pve-conn-text');
+  const resultDiv = document.getElementById('pve-test-result');
+  const url = (document.getElementById('pve-modal-url')?.value || '').trim();
+  const tokenId = (document.getElementById('pve-modal-token-id')?.value || '').trim();
+  const secret = (document.getElementById('pve-modal-token-secret')?.value || '').trim();
+  const node = (document.getElementById('pve-modal-target-node')?.value || '').trim();
+  const iface = (document.getElementById('pve-modal-interface')?.value || '').trim();
+  const subnets = (document.getElementById('pve-modal-subnets')?.value || '').trim();
+  const verifySSL = document.getElementById('pve-modal-verify-ssl')?.checked ?? false;
+
+  if (!url) {
+    if (resultDiv) {
+      resultDiv.style.display = 'block';
+      resultDiv.className = 'pve-test-error';
+      resultDiv.innerHTML = '⚠️ Please enter the Proxmox VE API URL (e.g. <code>https://192.168.1.100:8006</code>)';
+    }
+    return;
+  }
+
+  if (resultDiv) {
+    resultDiv.style.display = 'block';
+    resultDiv.className = 'pve-test-loading';
+    resultDiv.innerHTML = '<span class="status-dot ping-dot waiting" style="display:inline-block; vertical-align:middle; margin-right:6px;"></span> Connecting to Proxmox VE API...';
+  }
+
+  if (btn) btn.disabled = true;
+  if (btnText) btnText.textContent = 'Testing...';
+
+  try {
+    const res = await fetch('/api/proxmox/test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        node_id: activePveNodeId,
+        url: url,
+        token_id: tokenId,
+        token_secret: secret,
+        node: node,
+        preferred_interface: iface || 'eth0',
+        allowed_subnets: subnets,
+        verify_ssl: verifySSL
+      })
+    });
+    const data = await res.json();
+    if (resultDiv) {
+      if (data.success) {
+        resultDiv.className = 'pve-test-success';
+        const nodesStr = (data.nodes && data.nodes.length > 0) ? ` (Nodes: ${data.nodes.join(', ')})` : '';
+        resultDiv.innerHTML = `✓ <strong>Connected successfully!</strong> Proxmox VE ${escapeHtml(data.version || 'Online')}${escapeHtml(nodesStr)}`;
+      } else {
+        resultDiv.className = 'pve-test-error';
+        resultDiv.innerHTML = `✗ <strong>Connection failed:</strong> ${escapeHtml(data.error || 'Unknown error')}`;
+      }
+    }
+  } catch (err) {
+    if (resultDiv) {
+      resultDiv.className = 'pve-test-error';
+      resultDiv.innerHTML = `✗ <strong>Request failed:</strong> ${escapeHtml(err.message)}`;
+    }
+  } finally {
+    if (btn) btn.disabled = false;
+    if (btnText) btnText.textContent = 'Test Connection';
+  }
+}
+
+async function saveProxmoxConfig() {
+  if (!activePveNodeId) return;
+
+  const btn = document.getElementById('btn-save-pve-config');
+  const btnText = document.getElementById('btn-save-pve-config-text');
+  const enabled = document.getElementById('pve-modal-enabled')?.checked ?? false;
+  const url = (document.getElementById('pve-modal-url')?.value || '').trim();
+  const node = (document.getElementById('pve-modal-target-node')?.value || '').trim();
+  const tokenId = (document.getElementById('pve-modal-token-id')?.value || '').trim();
+  const secret = (document.getElementById('pve-modal-token-secret')?.value || '').trim();
+  const iface = (document.getElementById('pve-modal-interface')?.value || '').trim();
+  const subnets = (document.getElementById('pve-modal-subnets')?.value || '').trim();
+  const verifySSL = document.getElementById('pve-modal-verify-ssl')?.checked ?? false;
+
+  if (enabled && !url) {
+    showToast('Proxmox VE API URL is required to enable discovery', 'error');
+    return;
+  }
+
+  if (btn) btn.disabled = true;
+  if (btnText) btnText.textContent = 'Saving...';
+
+  try {
+    const res = await fetch(`/api/cluster/nodes/${encodeURIComponent(activePveNodeId)}/proxmox`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        enabled: enabled,
+        url: url,
+        token_id: tokenId,
+        token_secret: secret,
+        node: node,
+        preferred_interface: iface || 'eth0',
+        allowed_subnets: subnets,
+        verify_ssl: verifySSL
+      })
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(errText || `Server responded with ${res.status}`);
+    }
+
+    const data = await res.json();
+    showToast(enabled ? `Proxmox LXC discovery enabled for ${activePveNodeId}!` : `Proxmox discovery disabled for ${activePveNodeId}`, 'success');
+    closeProxmoxModal();
+
+    // Refresh cluster nodes and overview
+    fetchClusterNodes();
+    fetchStatusOverview();
+    // Trigger immediate sync
+    fetch('/api/sync', { method: 'POST' }).catch(() => {});
+  } catch (err) {
+    showToast(`Failed to save Proxmox config: ${err.message}`, 'error');
+  } finally {
+    if (btn) btn.disabled = false;
+    if (btnText) btnText.textContent = 'Save & Apply';
+  }
+}
+
+function initProxmoxModal() {
+  const modal = document.getElementById('proxmox-config-modal');
+  if (modal) {
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) closeProxmoxModal();
+    });
+  }
+
+  const btnTest = document.getElementById('btn-test-pve-conn');
+  if (btnTest) btnTest.addEventListener('click', testProxmoxConnection);
+
+  const btnSave = document.getElementById('btn-save-pve-config');
+  if (btnSave) btnSave.addEventListener('click', saveProxmoxConfig);
+
+  const btnToggleSecret = document.getElementById('btn-toggle-pve-secret');
+  if (btnToggleSecret) {
+    btnToggleSecret.addEventListener('click', () => {
+      const secretInput = document.getElementById('pve-modal-token-secret');
+      if (!secretInput) return;
+      if (secretInput.type === 'password') {
+        secretInput.type = 'text';
+        btnToggleSecret.textContent = '🔒';
+      } else {
+        secretInput.type = 'password';
+        btnToggleSecret.textContent = '👁️';
+      }
+    });
+  }
+}
+
 
 

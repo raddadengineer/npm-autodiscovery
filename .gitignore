@@ -2,3 +2,6 @@
 ROADMAP.md
 .DS_Store
 **/.DS_Store
+.*_configs.json
+**/*_configs.json
+.*_pve_config.json

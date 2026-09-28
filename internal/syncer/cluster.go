@@ -8,6 +8,8 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -26,39 +28,67 @@ type NodeReport struct {
 	RecentEvents []LogEvent            `json:"recent_events"`
 }
 
+// PVEConfig holds configuration parameters to connect to Proxmox VE.
+type PVEConfig struct {
+	Enabled            bool   `json:"enabled"`
+	URL                string `json:"url"`
+	TokenID            string `json:"token_id"`
+	TokenSecret        string `json:"token_secret,omitempty"`
+	Node               string `json:"node,omitempty"`
+	VerifySSL          bool   `json:"verify_ssl"`
+	PreferredInterface string `json:"preferred_interface,omitempty"`
+	AllowedSubnets     string `json:"allowed_subnets,omitempty"`
+	HasSecret          bool   `json:"has_secret,omitempty"`
+}
+
 // ClusterNodeInfo contains aggregated status of a cluster node (controller or remote worker).
 type ClusterNodeInfo struct {
-	NodeID          string                `json:"node_id"`
-	NodeIP          string                `json:"node_ip"`
-	IsController    bool                  `json:"is_controller"`
-	Status          string                `json:"status"` // "online", "offline"
-	LastHeartbeat   time.Time             `json:"last_heartbeat"`
-	UptimeSeconds   int64                 `json:"uptime_seconds"`
-	DockerConnected bool                  `json:"docker_connected"`
-	DockerVersion   string                `json:"docker_version"`
-	NPMConnected    bool                  `json:"npm_connected"`
-	PVEConnected    bool                  `json:"pve_connected"`
-	LXDConnected    bool                  `json:"lxd_connected"`
-	ContainerCount  int                   `json:"container_count"`
-	ProxyCount      int                   `json:"proxy_count"`
-	StreamCount     int                   `json:"stream_count"`
-	Overview        StatusOverview        `json:"overview"`
-	Containers      []ContainerStatusView `json:"containers,omitempty"`
-	Proxies         []*ManagedProxy       `json:"proxies,omitempty"`
-	Streams         []*ManagedStream      `json:"streams,omitempty"`
+	NodeID                string                `json:"node_id"`
+	NodeIP                string                `json:"node_ip"`
+	IsController          bool                  `json:"is_controller"`
+	Status                string                `json:"status"` // "online", "offline"
+	LastHeartbeat         time.Time             `json:"last_heartbeat"`
+	UptimeSeconds         int64                 `json:"uptime_seconds"`
+	DockerConnected       bool                  `json:"docker_connected"`
+	DockerVersion         string                `json:"docker_version"`
+	NPMConnected          bool                  `json:"npm_connected"`
+	PVEEnabled            bool                  `json:"pve_enabled"`
+	PVEConnected          bool                  `json:"pve_connected"`
+	PVEURL                string                `json:"pve_url,omitempty"`
+	PVENode               string                `json:"pve_node,omitempty"`
+	PVEVersion            string                `json:"pve_version,omitempty"`
+	PVETokenID            string                `json:"pve_token_id,omitempty"`
+	PVEHasSecret          bool                  `json:"pve_has_secret"`
+	PVEVerifySSL          bool                  `json:"pve_verify_ssl"`
+	PVEPreferredInterface string                `json:"pve_preferred_interface,omitempty"`
+	PVEAllowedSubnets     string                `json:"pve_allowed_subnets,omitempty"`
+	LXDConnected          bool                  `json:"lxd_connected"`
+	ContainerCount        int                   `json:"container_count"`
+	ProxyCount            int                   `json:"proxy_count"`
+	StreamCount           int                   `json:"stream_count"`
+	Overview              StatusOverview        `json:"overview"`
+	Containers            []ContainerStatusView `json:"containers,omitempty"`
+	Proxies               []*ManagedProxy       `json:"proxies,omitempty"`
+	Streams               []*ManagedStream      `json:"streams,omitempty"`
 }
 
 // ClusterRegistry stores and coordinates remote worker telemetry on the controller node.
 type ClusterRegistry struct {
-	mu    sync.RWMutex
-	nodes map[string]*ClusterNodeInfo // Key: NodeID
+	mu         sync.RWMutex
+	nodes      map[string]*ClusterNodeInfo // Key: NodeID
+	pveConfigs map[string]*PVEConfig       // Key: NodeID
+	configPath string
 }
 
-// NewClusterRegistry creates an empty registry for tracking cluster nodes.
+// NewClusterRegistry creates an empty registry for tracking cluster nodes and loads persisted configs.
 func NewClusterRegistry() *ClusterRegistry {
-	return &ClusterRegistry{
-		nodes: make(map[string]*ClusterNodeInfo),
+	reg := &ClusterRegistry{
+		nodes:      make(map[string]*ClusterNodeInfo),
+		pveConfigs: make(map[string]*PVEConfig),
+		configPath: resolveClusterConfigPath(),
 	}
+	reg.loadPersistedPVEConfigs()
+	return reg
 }
 
 // RegisterOrUpdate saves or updates telemetry from a remote worker report.
@@ -95,28 +125,169 @@ func (r *ClusterRegistry) RegisterOrUpdate(report NodeReport) {
 		taggedStreams[i] = &cs
 	}
 
+	pveEnabled := report.Status.PVEEnabled
+	pveURL := report.Status.PVEURL
+	pveNode := report.Status.PVENode
+	pveTokenID := ""
+	pveHasSecret := false
+	pveVerifySSL := false
+	pvePrefIface := "eth0"
+	pveSubnets := ""
+
+	if cfg, ok := r.pveConfigs[report.NodeID]; ok && cfg != nil {
+		if cfg.Enabled {
+			pveEnabled = true
+		}
+		if cfg.URL != "" {
+			pveURL = cfg.URL
+		}
+		if cfg.Node != "" {
+			pveNode = cfg.Node
+		}
+		pveTokenID = cfg.TokenID
+		pveHasSecret = cfg.HasSecret
+		pveVerifySSL = cfg.VerifySSL
+		pvePrefIface = cfg.PreferredInterface
+		pveSubnets = cfg.AllowedSubnets
+	}
+
 	info := &ClusterNodeInfo{
-		NodeID:          report.NodeID,
-		NodeIP:          report.NodeIP,
-		IsController:    false,
-		Status:          "online",
-		LastHeartbeat:   time.Now(),
-		UptimeSeconds:   report.Status.Uptime,
-		DockerConnected: report.Status.DockerConnected,
-		DockerVersion:   report.Status.DockerVersion,
-		NPMConnected:    report.Status.NPMConnected,
-		PVEConnected:    report.Status.PVEConnected,
-		LXDConnected:    report.Status.LXDConnected,
-		ContainerCount:  len(taggedContainers),
-		ProxyCount:      len(taggedProxies),
-		StreamCount:     len(taggedStreams),
-		Overview:        report.Status,
-		Containers:      taggedContainers,
-		Proxies:         taggedProxies,
-		Streams:         taggedStreams,
+		NodeID:                report.NodeID,
+		NodeIP:                report.NodeIP,
+		IsController:          false,
+		Status:                "online",
+		LastHeartbeat:         time.Now(),
+		UptimeSeconds:         report.Status.Uptime,
+		DockerConnected:       report.Status.DockerConnected,
+		DockerVersion:         report.Status.DockerVersion,
+		NPMConnected:          report.Status.NPMConnected,
+		PVEEnabled:            pveEnabled,
+		PVEConnected:          report.Status.PVEConnected,
+		PVEURL:                pveURL,
+		PVENode:               pveNode,
+		PVEVersion:            report.Status.PVEVersion,
+		PVETokenID:            pveTokenID,
+		PVEHasSecret:          pveHasSecret,
+		PVEVerifySSL:          pveVerifySSL,
+		PVEPreferredInterface: pvePrefIface,
+		PVEAllowedSubnets:     pveSubnets,
+		LXDConnected:          report.Status.LXDConnected,
+		ContainerCount:        len(taggedContainers),
+		ProxyCount:            len(taggedProxies),
+		StreamCount:           len(taggedStreams),
+		Overview:              report.Status,
+		Containers:            taggedContainers,
+		Proxies:               taggedProxies,
+		Streams:               taggedStreams,
 	}
 
 	r.nodes[report.NodeID] = info
+}
+
+// SetNodePVEConfig stores or updates Proxmox configuration for a cluster node.
+func (r *ClusterRegistry) SetNodePVEConfig(nodeID string, cfg PVEConfig) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	// If secret was not provided in update, keep existing secret
+	if cfg.TokenSecret == "" {
+		if existing, ok := r.pveConfigs[nodeID]; ok && existing.TokenSecret != "" {
+			cfg.TokenSecret = existing.TokenSecret
+		}
+	}
+	cfg.HasSecret = cfg.TokenSecret != ""
+
+	cp := cfg
+	r.pveConfigs[nodeID] = &cp
+
+	if node, ok := r.nodes[nodeID]; ok {
+		node.PVEEnabled = cfg.Enabled
+		node.PVEURL = cfg.URL
+		node.PVENode = cfg.Node
+		node.PVETokenID = cfg.TokenID
+		node.PVEHasSecret = cfg.HasSecret
+		node.PVEVerifySSL = cfg.VerifySSL
+		node.PVEPreferredInterface = cfg.PreferredInterface
+		node.PVEAllowedSubnets = cfg.AllowedSubnets
+		if !cfg.Enabled {
+			node.PVEConnected = false
+		}
+	}
+
+	r.savePersistedPVEConfigsLocked()
+}
+
+// GetNodePVEConfig retrieves the configured Proxmox settings for a node.
+func (r *ClusterRegistry) GetNodePVEConfig(nodeID string) *PVEConfig {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	if cfg, ok := r.pveConfigs[nodeID]; ok && cfg != nil {
+		cp := *cfg
+		cp.HasSecret = cp.TokenSecret != ""
+		return &cp
+	}
+	return nil
+}
+
+// GetAllNodePVEConfigs returns all stored node PVE configs.
+func (r *ClusterRegistry) GetAllNodePVEConfigs() map[string]PVEConfig {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	result := make(map[string]PVEConfig, len(r.pveConfigs))
+	for k, v := range r.pveConfigs {
+		if v != nil {
+			cp := *v
+			cp.HasSecret = cp.TokenSecret != ""
+			result[k] = cp
+		}
+	}
+	return result
+}
+
+func (r *ClusterRegistry) savePersistedPVEConfigsLocked() {
+	if r.configPath == "" {
+		return
+	}
+	data, err := json.MarshalIndent(r.pveConfigs, "", "  ")
+	if err != nil {
+		return
+	}
+	_ = os.WriteFile(r.configPath, data, 0600)
+}
+
+func (r *ClusterRegistry) loadPersistedPVEConfigs() {
+	if r.configPath == "" {
+		return
+	}
+	data, err := os.ReadFile(r.configPath)
+	if err != nil {
+		return
+	}
+	var loaded map[string]*PVEConfig
+	if err := json.Unmarshal(data, &loaded); err == nil {
+		for k, v := range loaded {
+			if v != nil {
+				v.HasSecret = v.TokenSecret != ""
+				r.pveConfigs[k] = v
+			}
+		}
+	}
+}
+
+func resolveClusterConfigPath() string {
+	if dir := os.Getenv("DATA_DIR"); dir != "" {
+		_ = os.MkdirAll(dir, 0755)
+		return filepath.Join(dir, "cluster_pve_configs.json")
+	}
+	if fi, err := os.Stat("/data"); err == nil && fi.IsDir() {
+		return "/data/cluster_pve_configs.json"
+	}
+	if fi, err := os.Stat("data"); err == nil && fi.IsDir() {
+		return "data/cluster_pve_configs.json"
+	}
+	return ".cluster_pve_configs.json"
 }
 
 // GetNodes returns all cluster nodes: local controller first, then remote workers sorted by ID.
@@ -132,6 +303,20 @@ func (r *ClusterRegistry) GetNodes(localNode ClusterNodeInfo) []ClusterNodeInfo 
 	now := time.Now()
 	for _, node := range r.nodes {
 		cp := *node
+		if cfg, ok := r.pveConfigs[cp.NodeID]; ok && cfg != nil {
+			cp.PVEEnabled = cfg.Enabled
+			if cfg.URL != "" {
+				cp.PVEURL = cfg.URL
+			}
+			if cfg.Node != "" {
+				cp.PVENode = cfg.Node
+			}
+			cp.PVETokenID = cfg.TokenID
+			cp.PVEHasSecret = cfg.HasSecret
+			cp.PVEVerifySSL = cfg.VerifySSL
+			cp.PVEPreferredInterface = cfg.PreferredInterface
+			cp.PVEAllowedSubnets = cfg.AllowedSubnets
+		}
 		// Nodes without heartbeat for > 45 seconds are marked offline
 		if now.Sub(cp.LastHeartbeat) > 45*time.Second {
 			cp.Status = "offline"
@@ -238,21 +423,30 @@ func (s *Syncer) GetClusterNodes() []ClusterNodeInfo {
 	}
 
 	localNode := ClusterNodeInfo{
-		NodeID:          localNodeID,
-		NodeIP:          localNodeIP,
-		IsController:    true,
-		Status:          "online",
-		LastHeartbeat:   time.Now(),
-		UptimeSeconds:   overview.Uptime,
-		DockerConnected: overview.DockerConnected,
-		DockerVersion:   overview.DockerVersion,
-		NPMConnected:    overview.NPMConnected,
-		PVEConnected:    overview.PVEConnected,
-		LXDConnected:    overview.LXDConnected,
-		ContainerCount:  overview.RunningContainers + overview.PVERunningContainers + overview.LXDRunningContainers,
-		ProxyCount:      len(localProxies),
-		StreamCount:     len(localStreams),
-		Overview:        overview,
+		NodeID:                localNodeID,
+		NodeIP:                localNodeIP,
+		IsController:          true,
+		Status:                "online",
+		LastHeartbeat:         time.Now(),
+		UptimeSeconds:         overview.Uptime,
+		DockerConnected:       overview.DockerConnected,
+		DockerVersion:         overview.DockerVersion,
+		NPMConnected:          overview.NPMConnected,
+		PVEEnabled:            s.cfg.PVEEnabled,
+		PVEConnected:          overview.PVEConnected,
+		PVEURL:                s.cfg.PVEURL,
+		PVENode:               s.cfg.PVENode,
+		PVEVersion:            overview.PVEVersion,
+		PVETokenID:            s.cfg.PVETokenID,
+		PVEHasSecret:          s.cfg.PVETokenSecret != "",
+		PVEVerifySSL:          s.cfg.PVEVerifySSL,
+		PVEPreferredInterface: s.cfg.PVEPreferredInterface,
+		PVEAllowedSubnets:     s.cfg.PVEAllowedSubnets,
+		LXDConnected:          overview.LXDConnected,
+		ContainerCount:        overview.RunningContainers + overview.PVERunningContainers + overview.LXDRunningContainers,
+		ProxyCount:            len(localProxies),
+		StreamCount:           len(localStreams),
+		Overview:              overview,
 	}
 
 	if s.clusterRegistry == nil {
@@ -379,5 +573,14 @@ func (s *Syncer) sendWorkerReport(ctx context.Context) {
 		body, _ := io.ReadAll(resp.Body)
 		s.EmitLog(LevelWarn, "cluster", fmt.Sprintf("Main node rejected telemetry push (HTTP %d)", resp.StatusCode), string(body))
 		return
+	}
+
+	var pushResp struct {
+		Status    string     `json:"status"`
+		Message   string     `json:"message"`
+		PVEConfig *PVEConfig `json:"pve_config,omitempty"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&pushResp); err == nil && pushResp.PVEConfig != nil {
+		_ = s.ApplyDynamicPVEConfig(*pushResp.PVEConfig)
 	}
 }

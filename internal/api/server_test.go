@@ -162,4 +162,78 @@ func TestClusterReportAndNodesEndpoints(t *testing.T) {
 	}
 }
 
+func TestProxmoxEndpoints(t *testing.T) {
+	cfg := &config.Config{
+		HostID:       "controller-node",
+		HostIP:       "192.168.1.10",
+		Port:         8080,
+		NPMURL:       "http://127.0.0.1:81",
+		ClusterToken: "token-123",
+	}
+
+	syncEngine := syncer.NewSyncer(cfg, nil, nil)
+	srv := NewServer(cfg, syncEngine, nil)
+
+	// 1. Test POST /api/cluster/nodes/worker-node-1/proxmox
+	pveJSON := `{
+		"enabled": true,
+		"url": "https://192.168.1.100:8006",
+		"token_id": "root@pam!npm",
+		"token_secret": "my-secret-uuid-1234",
+		"node": "pve",
+		"verify_ssl": false,
+		"preferred_interface": "eth0"
+	}`
+	req := httptest.NewRequest(http.MethodPost, "/api/cluster/nodes/worker-node-1/proxmox", strings.NewReader(pveJSON))
+	req.SetPathValue("nodeId", "worker-node-1")
+	rr := httptest.NewRecorder()
+	srv.handleNodeProxmox(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected HTTP 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	// 2. Test GET /api/cluster/nodes/worker-node-1/proxmox
+	req = httptest.NewRequest(http.MethodGet, "/api/cluster/nodes/worker-node-1/proxmox", nil)
+	req.SetPathValue("nodeId", "worker-node-1")
+	rr = httptest.NewRecorder()
+	srv.handleNodeProxmox(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected HTTP 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+	body := rr.Body.String()
+	if !strings.Contains(body, `"enabled":true`) || !strings.Contains(body, "https://192.168.1.100:8006") {
+		t.Errorf("unexpected GET proxmox config response: %s", body)
+	}
+	// Verify token_secret is masked in GET response
+	if strings.Contains(body, "my-secret-uuid-1234") {
+		t.Errorf("token_secret should be masked in GET response, but was leaked: %s", body)
+	}
+
+	// 3. Test POST /api/cluster/report returns pve_config to worker
+	reportJSON := `{"node_id":"worker-node-1","node_ip":"192.168.1.50"}`
+	req = httptest.NewRequest(http.MethodPost, "/api/cluster/report", strings.NewReader(reportJSON))
+	req.Header.Set("X-Cluster-Token", "token-123")
+	rr = httptest.NewRecorder()
+	srv.handleClusterReport(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected HTTP 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+	reportBody := rr.Body.String()
+	if !strings.Contains(reportBody, `"pve_config"`) || !strings.Contains(reportBody, "https://192.168.1.100:8006") {
+		t.Errorf("expected pve_config in cluster report response: %s", reportBody)
+	}
+
+	// 4. Test handleProxmoxTest with empty URL
+	req = httptest.NewRequest(http.MethodPost, "/api/proxmox/test", strings.NewReader(`{"url":""}`))
+	rr = httptest.NewRecorder()
+	srv.handleProxmoxTest(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("expected HTTP 400 for empty URL, got %d", rr.Code)
+	}
+}
+
+
 

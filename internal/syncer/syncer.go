@@ -250,6 +250,14 @@ func (s *Syncer) Start(ctx context.Context) {
 		} else {
 			s.EmitLog(LevelWarn, "pve", "Could not connect to Proxmox VE API initially (will retry)", err.Error())
 		}
+	} else if s.clusterRegistry != nil {
+		localID := s.cfg.HostID
+		if localID == "" {
+			localID = "controller-main"
+		}
+		if pveCfg := s.clusterRegistry.GetNodePVEConfig(localID); pveCfg != nil && pveCfg.Enabled {
+			_ = s.ApplyDynamicPVEConfig(*pveCfg)
+		}
 	}
 
 	// Initial LXD / Incus check & event listener
@@ -2688,4 +2696,146 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// GetNodePVEConfig returns the Proxmox VE configuration for a given node.
+func (s *Syncer) GetNodePVEConfig(nodeID string) *PVEConfig {
+	localID := s.cfg.HostID
+	if localID == "" {
+		localID = "controller-main"
+	}
+
+	if nodeID == "" || strings.EqualFold(nodeID, localID) || strings.EqualFold(nodeID, "local") || strings.EqualFold(nodeID, "controller-main") {
+		s.mu.RLock()
+		defer s.mu.RUnlock()
+		return &PVEConfig{
+			Enabled:            s.cfg.PVEEnabled,
+			URL:                s.cfg.PVEURL,
+			TokenID:            s.cfg.PVETokenID,
+			TokenSecret:        s.cfg.PVETokenSecret,
+			Node:               s.cfg.PVENode,
+			VerifySSL:          s.cfg.PVEVerifySSL,
+			PreferredInterface: s.cfg.PVEPreferredInterface,
+			AllowedSubnets:     s.cfg.PVEAllowedSubnets,
+			HasSecret:          s.cfg.PVETokenSecret != "",
+		}
+	}
+
+	if s.clusterRegistry != nil {
+		return s.clusterRegistry.GetNodePVEConfig(nodeID)
+	}
+	return nil
+}
+
+// SetNodePVEConfig updates the Proxmox VE configuration for a specific node (controller or remote worker).
+func (s *Syncer) SetNodePVEConfig(nodeID string, cfg PVEConfig) error {
+	localID := s.cfg.HostID
+	if localID == "" {
+		localID = "controller-main"
+	}
+
+	if nodeID == "" || strings.EqualFold(nodeID, localID) || strings.EqualFold(nodeID, "local") || strings.EqualFold(nodeID, "controller-main") {
+		if err := s.ApplyDynamicPVEConfig(cfg); err != nil {
+			return err
+		}
+		if s.clusterRegistry != nil {
+			s.clusterRegistry.SetNodePVEConfig(localID, cfg)
+		}
+		return nil
+	}
+
+	if s.clusterRegistry != nil {
+		s.clusterRegistry.SetNodePVEConfig(nodeID, cfg)
+		s.EmitLog(LevelInfo, "cluster", fmt.Sprintf("Proxmox VE configuration updated for remote worker '%s'", nodeID),
+			fmt.Sprintf("Enabled: %v, URL: %s", cfg.Enabled, cfg.URL))
+		return nil
+	}
+
+	return fmt.Errorf("cluster registry unavailable")
+}
+
+// ApplyDynamicPVEConfig applies a new or updated Proxmox VE configuration at runtime.
+func (s *Syncer) ApplyDynamicPVEConfig(pveCfg PVEConfig) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// If no changes and already connected/disconnected, skip
+	isUnchanged := s.cfg.PVEEnabled == pveCfg.Enabled &&
+		s.cfg.PVEURL == pveCfg.URL &&
+		s.cfg.PVETokenID == pveCfg.TokenID &&
+		(pveCfg.TokenSecret == "" || s.cfg.PVETokenSecret == pveCfg.TokenSecret) &&
+		s.cfg.PVENode == pveCfg.Node &&
+		s.cfg.PVEVerifySSL == pveCfg.VerifySSL &&
+		s.cfg.PVEPreferredInterface == pveCfg.PreferredInterface &&
+		s.cfg.PVEAllowedSubnets == pveCfg.AllowedSubnets
+
+	if isUnchanged {
+		if !pveCfg.Enabled && s.pveClient == nil {
+			return nil
+		}
+		if pveCfg.Enabled && s.pveClient != nil {
+			return nil
+		}
+	}
+
+	if !pveCfg.Enabled {
+		wasEnabled := s.cfg.PVEEnabled
+		s.cfg.PVEEnabled = false
+		s.pveClient = nil
+		s.pveContainers = nil
+		if wasEnabled {
+			s.EmitLog(LevelInfo, "pve", "Proxmox VE LXC Discovery disabled", "")
+			go s.TriggerSync()
+		}
+		return nil
+	}
+
+	secret := pveCfg.TokenSecret
+	if secret == "" && s.cfg.PVETokenSecret != "" {
+		secret = s.cfg.PVETokenSecret
+	}
+
+	preferredIface := pveCfg.PreferredInterface
+	if preferredIface == "" {
+		preferredIface = "eth0"
+	}
+
+	client, err := pve.NewClient(
+		pveCfg.URL,
+		pveCfg.TokenID,
+		secret,
+		pveCfg.Node,
+		pveCfg.VerifySSL,
+		10*time.Second,
+		preferredIface,
+		pveCfg.AllowedSubnets,
+	)
+	if err != nil {
+		s.EmitLog(LevelError, "pve", "Failed to initialize Proxmox VE client", err.Error())
+		return fmt.Errorf("failed to initialize Proxmox VE client: %w", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	if err := client.Ping(ctx); err != nil {
+		s.EmitLog(LevelWarn, "pve", fmt.Sprintf("Proxmox VE ping warning (%s)", pveCfg.URL), err.Error())
+	} else {
+		s.EmitLog(LevelSuccess, "pve", fmt.Sprintf("Connected to Proxmox VE API %s", client.Version()), client.BaseURL())
+	}
+
+	s.cfg.PVEEnabled = true
+	s.cfg.PVEURL = pveCfg.URL
+	s.cfg.PVETokenID = pveCfg.TokenID
+	s.cfg.PVETokenSecret = secret
+	s.cfg.PVENode = pveCfg.Node
+	s.cfg.PVEVerifySSL = pveCfg.VerifySSL
+	s.cfg.PVEPreferredInterface = preferredIface
+	s.cfg.PVEAllowedSubnets = pveCfg.AllowedSubnets
+	s.pveClient = client
+
+	s.EmitLog(LevelSuccess, "pve", fmt.Sprintf("Proxmox VE LXC Discovery enabled for node '%s'", s.cfg.HostID),
+		fmt.Sprintf("URL: %s, Node: %s, VerifySSL: %v", pveCfg.URL, pveCfg.Node, pveCfg.VerifySSL))
+
+	go s.TriggerSync()
+	return nil
 }
