@@ -2630,13 +2630,13 @@ function openProxmoxModal(nodeId) {
   const node = (clusterData || []).find(n => n.node_id === nodeId || (n.is_controller && (nodeId === 'controller-main' || nodeId === 'local')));
   if (node && node.pve_configs && node.pve_configs.length > 0) {
     nodeProxmoxConfigs = JSON.parse(JSON.stringify(node.pve_configs));
-  } else if (node && (node.pve_url || (node.overview && node.overview.pve_url))) {
+  } else if (node && node.pve_url && (node.pve_enabled || (node.overview && node.overview.pve_enabled))) {
     nodeProxmoxConfigs = [{
       id: 'default',
       name: 'Primary Proxmox',
-      enabled: !!(node.pve_enabled || (node.overview && node.overview.pve_enabled)),
-      url: node.pve_url || (node.overview && node.overview.pve_url) || '',
-      node: node.pve_node || (node.overview && node.overview.pve_node) || '',
+      enabled: true,
+      url: node.pve_url,
+      node: node.pve_node || '',
       token_id: node.pve_token_id || '',
       preferred_interface: node.pve_preferred_interface || 'eth0',
       allowed_subnets: node.pve_allowed_subnets || '',
@@ -2666,7 +2666,7 @@ function openProxmoxModal(nodeId) {
       if (activePveNodeId !== nodeId) return;
       if (data.configs && data.configs.length > 0) {
         nodeProxmoxConfigs = data.configs;
-      } else if (data.url) {
+      } else if (data.url && data.enabled) {
         nodeProxmoxConfigs = [{
           id: data.id || 'default',
           name: data.name || 'Primary Proxmox',
@@ -2680,9 +2680,7 @@ function openProxmoxModal(nodeId) {
           has_secret: !!data.has_secret
         }];
       } else {
-        if (nodeProxmoxConfigs.length === 0) {
-          nodeProxmoxConfigs = [];
-        }
+        nodeProxmoxConfigs = [];
       }
 
       renderPveEndpointPills();
@@ -3022,7 +3020,25 @@ async function deleteCurrentPveEndpoint() {
     const getRes = await fetch(`/api/cluster/nodes/${encodeURIComponent(activePveNodeId)}/proxmox`);
     if (getRes.ok) {
       const freshData = await getRes.json();
-      nodeProxmoxConfigs = freshData.configs || [];
+      if (freshData.configs && freshData.configs.length > 0) {
+        nodeProxmoxConfigs = freshData.configs;
+      } else if (freshData.url && freshData.enabled) {
+        nodeProxmoxConfigs = [{
+          id: freshData.id || 'default',
+          name: freshData.name || 'Primary Proxmox',
+          enabled: true,
+          url: freshData.url,
+          node: freshData.node || '',
+          token_id: freshData.token_id || '',
+          preferred_interface: freshData.preferred_interface || 'eth0',
+          allowed_subnets: freshData.allowed_subnets || '',
+          verify_ssl: !!freshData.verify_ssl,
+          has_secret: !!freshData.has_secret
+        }];
+      } else {
+        nodeProxmoxConfigs = [];
+      }
+
       if (nodeProxmoxConfigs.length > 0) {
         selectPveEndpoint(nodeProxmoxConfigs[0].id);
       } else {

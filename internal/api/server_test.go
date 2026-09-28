@@ -286,6 +286,45 @@ func TestProxmoxEndpoints(t *testing.T) {
 	if len(cfgsNow) != 1 {
 		t.Fatalf("expected 1 config after DELETE, got %d", len(cfgsNow))
 	}
+
+	// 8. Test DELETE default endpoint on node "monitor" (reproducing user scenario)
+	// Register worker node "monitor"
+	monitorReport := syncer.NodeReport{
+		NodeID: "monitor",
+		NodeIP: "192.168.1.180",
+		Status: syncer.StatusOverview{
+			PVEEnabled:   true,
+			PVEConnected: true,
+			PVEURL:       "https://monitor:8006",
+			PVENode:      "monitor",
+		},
+	}
+	_ = syncEngine.RegisterNodeReport(monitorReport)
+
+	req = httptest.NewRequest(http.MethodDelete, "/api/cluster/nodes/monitor/proxmox?id=default", nil)
+	req.SetPathValue("nodeId", "monitor")
+	rr = httptest.NewRecorder()
+	srv.handleNodeProxmox(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected HTTP 200 on DELETE default for monitor, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	// Verifying GET /api/cluster/nodes/monitor/proxmox returns 0 configs
+	req = httptest.NewRequest(http.MethodGet, "/api/cluster/nodes/monitor/proxmox", nil)
+	req.SetPathValue("nodeId", "monitor")
+	rr = httptest.NewRecorder()
+	srv.handleNodeProxmox(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected HTTP 200 on GET, got %d: %s", rr.Code, rr.Body.String())
+	}
+	var getMonitorResp struct {
+		Configs []syncer.PVEConfig `json:"configs"`
+		Enabled bool               `json:"enabled"`
+	}
+	_ = json.Unmarshal(rr.Body.Bytes(), &getMonitorResp)
+	if len(getMonitorResp.Configs) != 0 || getMonitorResp.Enabled {
+		t.Fatalf("expected 0 configs and disabled for monitor, got %d configs, enabled=%v", len(getMonitorResp.Configs), getMonitorResp.Enabled)
+	}
 }
 
 

@@ -271,3 +271,68 @@ func TestClusterRegistry_PersistenceAndUpgradeResilience(t *testing.T) {
 	}
 }
 
+func TestClusterRegistry_DeleteDefaultEndpointAndTelemetryNode(t *testing.T) {
+	tempDir := t.TempDir()
+	t.Setenv("DATA_DIR", tempDir)
+
+	reg := NewClusterRegistry()
+
+	// Case 1: Worker node "monitor" registers telemetry report with PVE enabled but no saved pveConfigs
+	reg.RegisterOrUpdate(NodeReport{
+		NodeID: "monitor",
+		NodeIP: "192.168.1.150",
+		Status: StatusOverview{
+			PVEEnabled:   true,
+			PVEConnected: true,
+			PVEURL:       "https://monitor-pve:8006",
+			PVENode:      "monitor",
+		},
+	})
+
+	// GetNodePVEConfigs should see the telemetry-backed default endpoint
+	cfgs := reg.GetNodePVEConfigs("monitor")
+	if len(cfgs) != 1 || cfgs[0].ID != "default" {
+		t.Fatalf("expected 1 default config from telemetry, got %+v", cfgs)
+	}
+
+	// Deleting config "default" on node "monitor" must succeed
+	deleted := reg.DeleteNodePVEConfig("monitor", "default")
+	if !deleted {
+		t.Fatalf("expected DeleteNodePVEConfig('monitor', 'default') to return true")
+	}
+
+	// After deletion, GetNodePVEConfigs must return nil
+	cfgsAfter := reg.GetNodePVEConfigs("monitor")
+	if len(cfgsAfter) != 0 {
+		t.Fatalf("expected 0 configs after deletion, got %+v", cfgsAfter)
+	}
+
+	// HasExplicitEmptyPVEConfigs should be true
+	if !reg.HasExplicitEmptyPVEConfigs("monitor") {
+		t.Fatalf("expected HasExplicitEmptyPVEConfigs('monitor') to be true")
+	}
+
+	// Case 2: Node has sole endpoint with random generated ID like "pve-1790563574911"
+	reg.SetNodePVEConfig("worker-node-02", PVEConfig{
+		ID:      "pve-1790563574911",
+		Name:    "Proxmox Random",
+		Enabled: true,
+		URL:     "https://pve2:8006",
+	})
+
+	// Deleting with configID "default" on single-endpoint node must succeed
+	deleted = reg.DeleteNodePVEConfig("worker-node-02", "default")
+	if !deleted {
+		t.Fatalf("expected DeleteNodePVEConfig with 'default' on sole endpoint to succeed")
+	}
+	if len(reg.GetNodePVEConfigs("worker-node-02")) != 0 {
+		t.Fatalf("expected 0 configs after sole endpoint deletion")
+	}
+
+	// Case 3: Idempotent deletion on empty node must succeed
+	deleted = reg.DeleteNodePVEConfig("non-existent-node", "default")
+	if !deleted {
+		t.Fatalf("expected idempotent deletion of 'default' to return true")
+	}
+}
+

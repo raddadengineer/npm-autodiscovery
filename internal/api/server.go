@@ -392,6 +392,8 @@ func (s *Server) handleClusterReport(w http.ResponseWriter, r *http.Request) {
 	if len(pveConfigs) > 0 {
 		resp["pve_configs"] = pveConfigs
 		resp["pve_config"] = pveConfigs[0]
+	} else if s.syncer.HasExplicitEmptyPVEConfigs(report.NodeID) {
+		resp["pve_configs"] = []syncer.PVEConfig{}
 	}
 
 	s.writeJSON(w, http.StatusOK, resp)

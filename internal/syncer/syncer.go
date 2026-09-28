@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"reflect"
 	"sort"
 	"strconv"
@@ -2958,6 +2959,33 @@ func min(a, b int) int {
 	return b
 }
 
+// isLocalNode returns true if nodeID refers to the local controller/agent node.
+func (s *Syncer) isLocalNode(nodeID string) bool {
+	cleanID := strings.TrimSpace(nodeID)
+	if cleanID == "" {
+		return true
+	}
+	localID := s.cfg.HostID
+	if localID == "" {
+		localID = "controller-main"
+	}
+	if strings.EqualFold(cleanID, localID) || strings.EqualFold(cleanID, "local") || strings.EqualFold(cleanID, "controller-main") {
+		return true
+	}
+	if host, err := os.Hostname(); err == nil && host != "" && strings.EqualFold(cleanID, host) {
+		return true
+	}
+	return false
+}
+
+// HasExplicitEmptyPVEConfigs returns true if the node was explicitly configured with 0 endpoints.
+func (s *Syncer) HasExplicitEmptyPVEConfigs(nodeID string) bool {
+	if s.clusterRegistry != nil {
+		return s.clusterRegistry.HasExplicitEmptyPVEConfigs(nodeID)
+	}
+	return false
+}
+
 // GetNodePVEConfigs returns all Proxmox VE configurations for a given node.
 func (s *Syncer) GetNodePVEConfigs(nodeID string) []PVEConfig {
 	localID := s.cfg.HostID
@@ -2965,7 +2993,7 @@ func (s *Syncer) GetNodePVEConfigs(nodeID string) []PVEConfig {
 		localID = "controller-main"
 	}
 
-	if nodeID == "" || strings.EqualFold(nodeID, localID) || strings.EqualFold(nodeID, "local") || strings.EqualFold(nodeID, "controller-main") {
+	if s.isLocalNode(nodeID) {
 		if s.clusterRegistry != nil {
 			if cfgs := s.clusterRegistry.GetNodePVEConfigs(localID); len(cfgs) > 0 {
 				return cfgs
@@ -2977,6 +3005,11 @@ func (s *Syncer) GetNodePVEConfigs(nodeID string) []PVEConfig {
 			}
 			if !strings.EqualFold(localID, "local") {
 				if cfgs := s.clusterRegistry.GetNodePVEConfigs("local"); len(cfgs) > 0 {
+					return cfgs
+				}
+			}
+			if nodeID != "" && !strings.EqualFold(nodeID, localID) {
+				if cfgs := s.clusterRegistry.GetNodePVEConfigs(nodeID); len(cfgs) > 0 {
 					return cfgs
 				}
 			}
@@ -2999,7 +3032,7 @@ func (s *Syncer) GetNodePVEConfigs(nodeID string) []PVEConfig {
 			return res
 		}
 
-		if s.cfg.PVEURL != "" {
+		if s.cfg.PVEURL != "" && s.cfg.PVEEnabled {
 			return []PVEConfig{{
 				ID:                 "default",
 				Name:               "Default Proxmox",
@@ -3043,7 +3076,7 @@ func (s *Syncer) GetNodePVEConfig(nodeID string) *PVEConfig {
 func (s *Syncer) GetNodePVEConfigByID(nodeID string, configID string) *PVEConfig {
 	cfgs := s.GetNodePVEConfigs(nodeID)
 	for _, c := range cfgs {
-		if c.ID == configID || (configID == "default" && (c.ID == "default" || c.ID == "")) {
+		if strings.EqualFold(c.ID, configID) || ((configID == "default" || configID == "") && (c.ID == "default" || c.ID == "" || len(cfgs) == 1)) {
 			cp := c
 			return &cp
 		}
@@ -3058,9 +3091,12 @@ func (s *Syncer) SetNodePVEConfig(nodeID string, cfg PVEConfig) error {
 		localID = "controller-main"
 	}
 
-	if nodeID == "" || strings.EqualFold(nodeID, localID) || strings.EqualFold(nodeID, "local") || strings.EqualFold(nodeID, "controller-main") {
+	if s.isLocalNode(nodeID) {
 		if s.clusterRegistry != nil {
-			s.clusterRegistry.SetNodePVEConfig(localID, cfg)
+			s.clusterRegistry.SetNodePVEConfig(nodeID, cfg)
+			if !strings.EqualFold(nodeID, localID) {
+				s.clusterRegistry.SetNodePVEConfig(localID, cfg)
+			}
 			allCfgs := s.clusterRegistry.GetNodePVEConfigs(localID)
 			return s.ApplyDynamicPVEConfigs(allCfgs)
 		}
@@ -3084,9 +3120,12 @@ func (s *Syncer) SetNodePVEConfigs(nodeID string, cfgs []PVEConfig) error {
 		localID = "controller-main"
 	}
 
-	if nodeID == "" || strings.EqualFold(nodeID, localID) || strings.EqualFold(nodeID, "local") || strings.EqualFold(nodeID, "controller-main") {
+	if s.isLocalNode(nodeID) {
 		if s.clusterRegistry != nil {
-			s.clusterRegistry.SetNodePVEConfigs(localID, cfgs)
+			s.clusterRegistry.SetNodePVEConfigs(nodeID, cfgs)
+			if !strings.EqualFold(nodeID, localID) {
+				s.clusterRegistry.SetNodePVEConfigs(localID, cfgs)
+			}
 			allCfgs := s.clusterRegistry.GetNodePVEConfigs(localID)
 			return s.ApplyDynamicPVEConfigs(allCfgs)
 		}
@@ -3109,22 +3148,44 @@ func (s *Syncer) DeleteNodePVEConfig(nodeID string, configID string) error {
 		localID = "controller-main"
 	}
 
-	if nodeID == "" || strings.EqualFold(nodeID, localID) || strings.EqualFold(nodeID, "local") || strings.EqualFold(nodeID, "controller-main") {
+	if s.isLocalNode(nodeID) {
 		if s.clusterRegistry != nil {
-			s.clusterRegistry.DeleteNodePVEConfig(localID, configID)
+			s.clusterRegistry.DeleteNodePVEConfig(nodeID, configID)
+			if !strings.EqualFold(nodeID, localID) {
+				s.clusterRegistry.DeleteNodePVEConfig(localID, configID)
+			}
 			allCfgs := s.clusterRegistry.GetNodePVEConfigs(localID)
-			return s.ApplyDynamicPVEConfigs(allCfgs)
+			if len(allCfgs) == 0 && !strings.EqualFold(nodeID, localID) {
+				allCfgs = s.clusterRegistry.GetNodePVEConfigs(nodeID)
+			}
+			err := s.ApplyDynamicPVEConfigs(allCfgs)
+			if len(allCfgs) == 0 {
+				s.mu.Lock()
+				s.cfg.PVEEnabled = false
+				s.cfg.PVEURL = ""
+				s.mu.Unlock()
+			}
+			go s.TriggerSync()
+			return err
 		}
 		s.mu.Lock()
 		delete(s.pveClients, configID)
 		delete(s.pveConfigs, configID)
-		var first *pve.Client
-		for _, cl := range s.pveClients {
-			first = cl
-			break
+		if configID == "default" || len(s.pveConfigs) == 0 {
+			s.pveClients = make(map[string]*pve.Client)
+			s.pveConfigs = make(map[string]PVEConfig)
+			s.pveClient = nil
+			s.cfg.PVEEnabled = false
+			s.cfg.PVEURL = ""
+		} else {
+			var first *pve.Client
+			for _, cl := range s.pveClients {
+				first = cl
+				break
+			}
+			s.pveClient = first
+			s.cfg.PVEEnabled = len(s.pveClients) > 0
 		}
-		s.pveClient = first
-		s.cfg.PVEEnabled = len(s.pveClients) > 0
 		s.mu.Unlock()
 		go s.TriggerSync()
 		return nil
@@ -3133,6 +3194,10 @@ func (s *Syncer) DeleteNodePVEConfig(nodeID string, configID string) error {
 	if s.clusterRegistry != nil {
 		if s.clusterRegistry.DeleteNodePVEConfig(nodeID, configID) {
 			s.EmitLog(LevelInfo, "cluster", fmt.Sprintf("Proxmox VE configuration '%s' removed from remote worker '%s'", configID, nodeID), "")
+			return nil
+		}
+		if configID == "default" || configID == "" {
+			s.EmitLog(LevelInfo, "cluster", fmt.Sprintf("Proxmox VE configuration '%s' cleared for remote worker '%s'", configID, nodeID), "")
 			return nil
 		}
 		return fmt.Errorf("config '%s' not found for node '%s'", configID, nodeID)
