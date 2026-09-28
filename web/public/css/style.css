@@ -102,21 +102,27 @@ body {
 .header-container {
   max-width: 1440px;
   margin: 0 auto;
-  padding: 0.85rem 1.5rem;
+  padding: 0.65rem 1.5rem;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1.5rem;
+  flex-direction: column;
+  gap: 0.55rem;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .header-top-row {
-  display: contents;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 1rem;
 }
 
 .brand {
   display: flex;
   align-items: center;
   gap: 0.85rem;
+  min-width: 0;
 }
 
 .brand-icon {
@@ -130,6 +136,7 @@ body {
   color: white;
   position: relative;
   box-shadow: 0 4px 14px rgba(14, 165, 233, 0.35);
+  flex-shrink: 0;
 }
 
 .pulse-indicator {
@@ -154,6 +161,7 @@ body {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  min-width: 0;
 }
 
 .brand-text h1 {
@@ -163,6 +171,7 @@ body {
   background: linear-gradient(180deg, #ffffff, #cbd5e1);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
+  white-space: nowrap;
 }
 
 .version-badge {
@@ -172,24 +181,43 @@ body {
   border-radius: var(--radius-sm);
   background: rgba(255, 255, 255, 0.08);
   color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+#sync-now-btn {
+  flex-shrink: 0;
 }
 
 .header-status-group {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 1rem;
+  gap: 0.45rem 0.6rem;
+  width: 100%;
 }
 
 .status-pill {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 0.45rem;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid var(--border-subtle);
-  padding: 0.35rem 0.8rem;
+  padding: 0.28rem 0.7rem;
   border-radius: var(--radius-full);
-  font-size: 0.8rem;
+  font-size: 0.76rem;
   color: var(--text-secondary);
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all var(--transition-fast);
+}
+
+.status-pill:hover {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.status-pill svg {
+  flex-shrink: 0;
 }
 
 .status-dot {
@@ -199,6 +227,7 @@ body {
   background-color: var(--text-muted);
   display: inline-block;
   transition: background-color var(--transition-normal);
+  flex-shrink: 0;
 }
 
 .status-dot.connected {
@@ -222,6 +251,10 @@ body {
 .status-val {
   font-weight: 600;
   color: var(--text-primary);
+  max-width: 170px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Buttons */
@@ -1836,8 +1869,8 @@ body {
 /* Tablet & Intermediate Screens (<= 1024px) */
 @media (max-width: 1024px) {
   .header-container {
-    padding: 0.75rem 1.25rem;
-    gap: 1rem;
+    padding: 0.55rem 1.25rem;
+    gap: 0.5rem;
   }
   .container {
     padding: 0 1.25rem;
@@ -1851,12 +1884,8 @@ body {
 /* Mobile Screens (<= 768px) */
 @media (max-width: 768px) {
   .header-container {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0.65rem 0.85rem;
-    gap: 0.5rem 0.75rem;
+    padding: 0.5rem 0.85rem;
+    gap: 0.45rem;
   }
 
   .header-top-row {
@@ -1864,6 +1893,7 @@ body {
     align-items: center;
     justify-content: space-between;
     width: 100%;
+    gap: 0.75rem;
   }
 
   .brand-text h1 {
@@ -1876,14 +1906,14 @@ body {
   }
 
   .brand-icon svg {
-    width: 20px;
-    height: 20px;
+    width: 18px;
+    height: 18px;
   }
 
   #sync-now-btn {
-    padding: 0.4rem 0.85rem;
+    padding: 0.35rem 0.75rem;
     font-size: 0.8rem;
-    min-height: 38px;
+    min-height: 36px;
   }
 
   .header-status-group {
@@ -1892,23 +1922,17 @@ body {
     align-items: center;
     gap: 0.35rem;
     width: 100%;
-    padding: 0.25rem 0 0.15rem 0;
-  }
-
-  .header-status-group::-webkit-scrollbar {
-    display: none;
   }
 
   .status-pill {
     display: inline-flex;
     align-items: center;
     gap: 0.35rem;
-    padding: 0.25rem 0.55rem;
+    padding: 0.22rem 0.5rem;
     font-size: 0.72rem;
-    min-height: 26px;
+    min-height: 24px;
     border-radius: var(--radius-full);
     flex-shrink: 0;
-    max-width: 100%;
   }
 
   .status-pill .status-val {
@@ -2277,7 +2301,8 @@ body {
 /* Extra Small Mobile Screens (<= 420px) */
 @media (max-width: 420px) {
   .header-container {
-    padding: 0.5rem 0.65rem;
+    padding: 0.45rem 0.6rem;
+    gap: 0.4rem;
   }
 
   .header-top-row {
@@ -2292,10 +2317,23 @@ body {
     display: none;
   }
 
+  #sync-now-btn span {
+    display: none;
+  }
+
+  #sync-now-btn {
+    padding: 0.35rem 0.6rem;
+    min-height: 32px;
+  }
+
   .status-pill {
-    padding: 0.2rem 0.45rem;
+    padding: 0.18rem 0.45rem;
     font-size: 0.68rem;
-    min-height: 24px;
+    min-height: 22px;
+  }
+
+  .status-pill .status-val {
+    max-width: 100px;
   }
 
   .metrics-grid {
