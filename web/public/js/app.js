@@ -1169,6 +1169,7 @@ function applyDocsFilters() {
   // First pass: identify category headers and their child rows
   let currentHeader = null;
   let currentHeaderHasMatch = false;
+  let currentHeaderCategory = '';
 
   rows.forEach(row => {
     if (row.classList.contains('docs-category-header')) {
@@ -1177,11 +1178,22 @@ function applyDocsFilters() {
       }
       currentHeader = row;
       currentHeaderHasMatch = false;
+      const hText = row.textContent.toLowerCase();
+      if (hText.includes('docker ingress')) currentHeaderCategory = 'docker';
+      else if (hText.includes('zero-502') || hText.includes('health')) currentHeaderCategory = 'health';
+      else if (hText.includes('middleware')) currentHeaderCategory = 'middleware';
+      else if (hText.includes('subpath') || hText.includes('location')) currentHeaderCategory = 'locations';
+      else if (hText.includes('balancing') || hText.includes('upstream')) currentHeaderCategory = 'upstream';
+      else if (hText.includes('layer 4') || hText.includes('streams')) currentHeaderCategory = 'streams';
+      else if (hText.includes('proxmox') || hText.includes('pve')) currentHeaderCategory = 'pve';
+      else if (hText.includes('lxd') || hText.includes('incus')) currentHeaderCategory = 'lxd';
+      else if (hText.includes('environment')) currentHeaderCategory = 'env';
+      else currentHeaderCategory = '';
       return;
     }
 
     totalOptionsCount++;
-    const rowCat = row.getAttribute('data-category') || '';
+    const rowCat = row.getAttribute('data-category') || currentHeaderCategory;
     const text = row.textContent.toLowerCase();
 
     const matchesCategory = currentDocsCategory === 'all' || rowCat === currentDocsCategory;

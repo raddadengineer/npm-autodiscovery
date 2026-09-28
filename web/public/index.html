@@ -865,27 +865,311 @@
                     <td>Enable UDP stream proxying (e.g. DNS, gaming, voice).</td>
                   </tr>
 
-                  <!-- 7. Proxmox VE (PVE) LXC Metadata -->
+                  <!-- 7. Proxmox VE (PVE) LXC & VM Metadata -->
                   <tr class="docs-category-header">
-                    <td colspan="4">⚡ Proxmox VE (PVE) LXC Tags & Notes</td>
+                    <td colspan="4">⚡ Proxmox VE (PVE) LXC &amp; VM Tags and Notes</td>
                   </tr>
-                  <tr>
-                    <td><code>npm.domain=...</code></td>
-                    <td><span class="type-tag">PVE Tag</span></td>
-                    <td>—</td>
-                    <td>Add to LXC Tags in Proxmox Web GUI: <code>npm.domain=app.lan, npm.port=80, npm.ssl=true</code>.</td>
+
+                  <!-- Ingress: Domain -->
+                  <tr data-category="pve">
+                    <td>
+                      <code>npm.domain=...</code><br>
+                      <span class="text-muted" style="font-size:0.75rem;">Tag or Notes | alias: <code>npm.frontend.domain</code>, <code>domain</code></span>
+                    </td>
+                    <td><span class="type-tag">string</span></td>
+                    <td><em>Required</em></td>
+                    <td>
+                      Domain name(s) to route to this LXC container or VM. Supports comma-separated lists.<br>
+                      <strong>Tag:</strong> <code>npm.domain=adguard.homelab.arpa, vault.homelab.arpa</code><br>
+                      <strong>Notes:</strong> <code>npm.domain: adguard.homelab.arpa</code>
+                    </td>
                   </tr>
-                  <tr>
-                    <td><code>npm.stream.port=...</code></td>
-                    <td><span class="type-tag">PVE Tag</span></td>
-                    <td>—</td>
-                    <td>Add to LXC Tags for Layer 4 stream: <code>npm.stream.port=5432, npm.stream.tcp=true</code>.</td>
+
+                  <!-- Ingress: Port -->
+                  <tr data-category="pve">
+                    <td>
+                      <code>npm.port=...</code><br>
+                      <span class="text-muted" style="font-size:0.75rem;">Tag or Notes | alias: <code>npm.frontend.port</code>, <code>port</code></span>
+                    </td>
+                    <td><span class="type-tag">int</span></td>
+                    <td><code>80</code></td>
+                    <td>
+                      Internal service port running inside the container or VM.<br>
+                      <strong>Tag:</strong> <code>npm.port=8080</code><br>
+                      <strong>Notes:</strong> <code>npm.port: 8080</code>
+                    </td>
                   </tr>
-                  <tr>
-                    <td><code>npm.domain: ...</code></td>
-                    <td><span class="type-tag">PVE Notes</span></td>
+
+                  <!-- Ingress: Scheme -->
+                  <tr data-category="pve">
+                    <td>
+                      <code>npm.scheme=...</code><br>
+                      <span class="text-muted" style="font-size:0.75rem;">Tag or Notes | alias: <code>npm.forward_scheme</code></span>
+                    </td>
+                    <td><span class="type-tag">string</span></td>
+                    <td><code>http</code></td>
+                    <td>
+                      Upstream forwarding scheme (<code>http</code> or <code>https</code>).<br>
+                      <strong>Tag:</strong> <code>npm.scheme=https</code><br>
+                      <strong>Notes:</strong> <code>npm.scheme: https</code>
+                    </td>
+                  </tr>
+
+                  <!-- Ingress: Forward Host / IP Override -->
+                  <tr data-category="pve">
+                    <td>
+                      <code>npm.forward_host=...</code><br>
+                      <span class="text-muted" style="font-size:0.75rem;">Tag or Notes | alias: <code>npm.host</code>, <code>npm.ip</code></span>
+                    </td>
+                    <td><span class="type-tag">string</span></td>
+                    <td>Auto (IP)</td>
+                    <td>
+                      Explicit IP or DNS hostname override if guest agent is missing or using a custom interface/VLAN.<br>
+                      <strong>Tag:</strong> <code>npm.forward_host=192.168.1.150</code><br>
+                      <strong>Notes:</strong> <code>npm.forward_host: 192.168.1.150</code>
+                    </td>
+                  </tr>
+
+                  <!-- Ingress: Subpath -->
+                  <tr data-category="pve">
+                    <td>
+                      <code>npm.path=...</code><br>
+                      <span class="text-muted" style="font-size:0.75rem;">Tag or Notes | alias: <code>npm.frontend.path</code></span>
+                    </td>
+                    <td><span class="type-tag">string</span></td>
+                    <td><code>/</code></td>
+                    <td>
+                      Subpath prefix to route for this proxy host (e.g. <code>/api</code>, <code>/portal</code>).<br>
+                      <strong>Tag:</strong> <code>npm.path=/api</code><br>
+                      <strong>Notes:</strong> <code>npm.path: /api</code>
+                    </td>
+                  </tr>
+
+                  <!-- SSL: Enabled -->
+                  <tr data-category="pve">
+                    <td>
+                      <code>npm.ssl=...</code><br>
+                      <span class="text-muted" style="font-size:0.75rem;">Tag or Notes | alias: <code>npm.ssl.enabled</code></span>
+                    </td>
+                    <td><span class="type-tag">bool</span></td>
+                    <td><code>false</code></td>
+                    <td>
+                      Enable SSL certificate termination for this instance in NPM.<br>
+                      <strong>Tag:</strong> <code>npm.ssl=true</code><br>
+                      <strong>Notes:</strong> <code>npm.ssl: true</code>
+                    </td>
+                  </tr>
+
+                  <!-- SSL: Forced Redirect -->
+                  <tr data-category="pve">
+                    <td>
+                      <code>npm.ssl_forced=...</code><br>
+                      <span class="text-muted" style="font-size:0.75rem;">Tag or Notes | alias: <code>npm.force_ssl</code></span>
+                    </td>
+                    <td><span class="type-tag">bool</span></td>
+                    <td><code>false</code></td>
+                    <td>
+                      Force automatic HTTP to HTTPS (301) redirection in NPM.<br>
+                      <strong>Tag:</strong> <code>npm.ssl_forced=true</code><br>
+                      <strong>Notes:</strong> <code>npm.ssl_forced: true</code>
+                    </td>
+                  </tr>
+
+                  <!-- Security: HSTS -->
+                  <tr data-category="pve">
+                    <td>
+                      <code>npm.hsts=...</code><br>
+                      <span class="text-muted" style="font-size:0.75rem;">Tag or Notes | alias: <code>npm.hsts_enabled</code></span>
+                    </td>
+                    <td><span class="type-tag">bool</span></td>
+                    <td><code>false</code></td>
+                    <td>
+                      Enable HTTP Strict Transport Security (HSTS) response header.<br>
+                      <strong>Tag:</strong> <code>npm.hsts=true</code><br>
+                      <strong>Notes:</strong> <code>npm.hsts: true</code>
+                    </td>
+                  </tr>
+
+                  <!-- Security: HSTS Subdomains -->
+                  <tr data-category="pve">
+                    <td>
+                      <code>npm.hsts_subdomains=...</code><br>
+                      <span class="text-muted" style="font-size:0.75rem;">Tag or Notes</span>
+                    </td>
+                    <td><span class="type-tag">bool</span></td>
+                    <td><code>false</code></td>
+                    <td>
+                      Include <code>includeSubDomains</code> directive in HSTS response header.<br>
+                      <strong>Tag:</strong> <code>npm.hsts_subdomains=true</code><br>
+                      <strong>Notes:</strong> <code>npm.hsts_subdomains: true</code>
+                    </td>
+                  </tr>
+
+                  <!-- Middlewares: WebSocket Upgrade -->
+                  <tr data-category="pve">
+                    <td>
+                      <code>npm.websocket=...</code><br>
+                      <span class="text-muted" style="font-size:0.75rem;">Tag or Notes | alias: <code>allow_websocket_upgrade</code></span>
+                    </td>
+                    <td><span class="type-tag">bool</span></td>
+                    <td><code>true</code></td>
+                    <td>
+                      Enable WebSocket upgrade headers (essential for Home Assistant, Plex, Node-RED, etc.).<br>
+                      <strong>Tag:</strong> <code>npm.websocket=true</code><br>
+                      <strong>Notes:</strong> <code>npm.websocket: true</code>
+                    </td>
+                  </tr>
+
+                  <!-- Security: Block Common Exploits -->
+                  <tr data-category="pve">
+                    <td>
+                      <code>npm.block_exploits=...</code><br>
+                      <span class="text-muted" style="font-size:0.75rem;">Tag or Notes</span>
+                    </td>
+                    <td><span class="type-tag">bool</span></td>
+                    <td><code>true</code></td>
+                    <td>
+                      Enable NPM exploit mitigation rules (blocks SQL injection, XSS, and directory traversal).<br>
+                      <strong>Tag:</strong> <code>npm.block_exploits=true</code><br>
+                      <strong>Notes:</strong> <code>npm.block_exploits: true</code>
+                    </td>
+                  </tr>
+
+                  <!-- Middlewares: Asset Caching -->
+                  <tr data-category="pve">
+                    <td>
+                      <code>npm.caching=...</code><br>
+                      <span class="text-muted" style="font-size:0.75rem;">Tag or Notes | alias: <code>npm.caching_enabled</code></span>
+                    </td>
+                    <td><span class="type-tag">bool</span></td>
+                    <td><code>false</code></td>
+                    <td>
+                      Enable reverse proxy asset caching in Nginx.<br>
+                      <strong>Tag:</strong> <code>npm.caching=true</code><br>
+                      <strong>Notes:</strong> <code>npm.caching: true</code>
+                    </td>
+                  </tr>
+
+                  <!-- Performance: HTTP/2 -->
+                  <tr data-category="pve">
+                    <td>
+                      <code>npm.http2=...</code><br>
+                      <span class="text-muted" style="font-size:0.75rem;">Tag or Notes | alias: <code>npm.http2_support</code></span>
+                    </td>
+                    <td><span class="type-tag">bool</span></td>
+                    <td><code>true</code></td>
+                    <td>
+                      Enable HTTP/2 protocol support for faster multiplexed streams.<br>
+                      <strong>Tag:</strong> <code>npm.http2=true</code><br>
+                      <strong>Notes:</strong> <code>npm.http2: true</code>
+                    </td>
+                  </tr>
+
+                  <!-- Security: Access List ID -->
+                  <tr data-category="pve">
+                    <td>
+                      <code>npm.access_list_id=...</code><br>
+                      <span class="text-muted" style="font-size:0.75rem;">Tag or Notes | alias: <code>access_list</code></span>
+                    </td>
+                    <td><span class="type-tag">int</span></td>
+                    <td><code>0</code></td>
+                    <td>
+                      Existing NPM Access List ID to restrict proxy host access (e.g. Basic Auth or IP whitelist).<br>
+                      <strong>Tag:</strong> <code>npm.access_list_id=1</code><br>
+                      <strong>Notes:</strong> <code>npm.access_list_id: 1</code>
+                    </td>
+                  </tr>
+
+                  <!-- Custom Nginx Configuration -->
+                  <tr data-category="pve">
+                    <td>
+                      <code>npm.advanced_config: ...</code><br>
+                      <span class="text-muted" style="font-size:0.75rem;">Notes (Recommended) | alias: <code>custom_config</code></span>
+                    </td>
+                    <td><span class="type-tag">string</span></td>
                     <td>—</td>
-                    <td>Paste YAML block into LXC Notes textarea: <code>npm.domain: app.lan</code>, <code>npm.port: 8080</code>.</td>
+                    <td>
+                      Raw custom Nginx configuration block inserted directly into the server block.<br>
+                      <strong>Notes:</strong><br>
+                      <code>npm.advanced_config: |</code><br>
+                      <code>&nbsp;&nbsp;client_max_body_size 500M;</code><br>
+                      <code>&nbsp;&nbsp;proxy_read_timeout 300s;</code>
+                    </td>
+                  </tr>
+
+                  <!-- L4 Streams: Incoming Port -->
+                  <tr data-category="pve">
+                    <td>
+                      <code>npm.stream.incoming_port=...</code><br>
+                      <span class="text-muted" style="font-size:0.75rem;">Tag or Notes | alias: <code>npm.stream.port</code></span>
+                    </td>
+                    <td><span class="type-tag">int</span></td>
+                    <td>—</td>
+                    <td>
+                      Public incoming port for Layer 4 TCP/UDP stream proxying in NPM.<br>
+                      <strong>Tag:</strong> <code>npm.stream.incoming_port=25565</code><br>
+                      <strong>Notes:</strong> <code>npm.stream.incoming_port: 25565</code>
+                    </td>
+                  </tr>
+
+                  <!-- L4 Streams: Forward Port -->
+                  <tr data-category="pve">
+                    <td>
+                      <code>npm.stream.forward_port=...</code><br>
+                      <span class="text-muted" style="font-size:0.75rem;">Tag or Notes</span>
+                    </td>
+                    <td><span class="type-tag">int</span></td>
+                    <td>Incoming</td>
+                    <td>
+                      Target forwarding port on the LXC or VM. Defaults to incoming port.<br>
+                      <strong>Tag:</strong> <code>npm.stream.forward_port=25565</code><br>
+                      <strong>Notes:</strong> <code>npm.stream.forward_port: 25565</code>
+                    </td>
+                  </tr>
+
+                  <!-- L4 Streams: TCP Forwarding -->
+                  <tr data-category="pve">
+                    <td>
+                      <code>npm.stream.tcp=...</code><br>
+                      <span class="text-muted" style="font-size:0.75rem;">Tag or Notes</span>
+                    </td>
+                    <td><span class="type-tag">bool</span></td>
+                    <td><code>true</code></td>
+                    <td>
+                      Forward TCP traffic through this L4 stream (Minecraft, SSH, Postgres, MQTT).<br>
+                      <strong>Tag:</strong> <code>npm.stream.tcp=true</code><br>
+                      <strong>Notes:</strong> <code>npm.stream.tcp: true</code>
+                    </td>
+                  </tr>
+
+                  <!-- L4 Streams: UDP Forwarding -->
+                  <tr data-category="pve">
+                    <td>
+                      <code>npm.stream.udp=...</code><br>
+                      <span class="text-muted" style="font-size:0.75rem;">Tag or Notes</span>
+                    </td>
+                    <td><span class="type-tag">bool</span></td>
+                    <td><code>false</code></td>
+                    <td>
+                      Forward UDP traffic through this L4 stream (DNS, WireGuard, Game voice).<br>
+                      <strong>Tag:</strong> <code>npm.stream.udp=true</code><br>
+                      <strong>Notes:</strong> <code>npm.stream.udp: true</code>
+                    </td>
+                  </tr>
+
+                  <!-- Discovery Control -->
+                  <tr data-category="pve">
+                    <td>
+                      <code>npm.enable=...</code><br>
+                      <span class="text-muted" style="font-size:0.75rem;">Tag or Notes | alias: <code>npm.enabled</code></span>
+                    </td>
+                    <td><span class="type-tag">bool</span></td>
+                    <td><code>true</code></td>
+                    <td>
+                      Explicitly enable or disable discovery for this LXC container or VM. Set to <code>false</code> to ignore.<br>
+                      <strong>Tag:</strong> <code>npm.enable=false</code><br>
+                      <strong>Notes:</strong> <code>npm.enable: false</code>
+                    </td>
                   </tr>
 
                   <!-- 8. Canonical LXD / Incus Metadata -->
@@ -1123,44 +1407,102 @@ volumes:
               </button>
             </div>
 
-            <!-- PANE 2: Proxmox VE (PVE) LXC -->
+            <!-- PANE 2: Proxmox VE (PVE) LXC & QEMU VMs -->
             <div class="docs-guide-pane" id="pve-guide">
-              <p class="mb-3 text-muted">Proxmox VE LXC container discovery using API Token authentication and GUI tags or notes:</p>
+              <p class="mb-3 text-muted">Proxmox VE LXC container and QEMU Virtual Machine discovery using API Token authentication and GUI tags or Notes (Description):</p>
               
               <div class="info-alert mb-3">
-                <strong>Step 1:</strong> In Proxmox GUI, go to <em>Datacenter &rarr; Permissions &rarr; API Tokens &rarr; Add</em>. Create a token (e.g. <code>automation</code>) under user <code>root@pam</code> or dedicated service user.
+                <strong>⚡ Quick Tip:</strong> In Proxmox VE, you can configure discovery using either <strong>Tags</strong> (comma-separated list in Web GUI or CLI) OR <strong>Notes</strong> (multi-line YAML block in the container/VM Notes textarea). Both LXCs and QEMU VMs are fully supported!
               </div>
 
+              <!-- Method 1: Web GUI & CLI Tags -->
+              <h4 style="margin: 1rem 0 0.5rem; font-size: 0.95rem; color: var(--accent-cyan); display: flex; align-items: center; gap: 0.4rem;">
+                <span>🏷️ Method 1: Proxmox Web GUI Tags (Comma-Separated)</span>
+              </h4>
+              <p class="text-muted" style="font-size: 0.82rem; margin-bottom: 0.5rem;">
+                In the Proxmox Web GUI, select your LXC or VM, click <strong>Tags</strong> in the top header, and paste comma-separated key=value pairs:
+              </p>
               <div class="code-snippet-wrap mb-3">
-                <pre><code class="language-bash"># Run NPM Auto-Discovery with PVE Hypervisor Provider:
-docker run -d \
-  --name npm-autodiscovery-pve \
-  -p 8080:8080 \
-  -e NPM_URL=http://192.168.1.10:81 \
-  -e NPM_USER=admin@example.com \
-  -e NPM_PASS=changeme \
-  -e PVE_ENABLED=true \
-  -e PVE_URL=https://192.168.1.30:8006 \
-  -e PVE_TOKEN_ID="root@pam!automation" \
-  -e PVE_TOKEN_SECRET="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" \
-  -e PVE_VERIFY_SSL=false \
-  -e PVE_POLL_INTERVAL=15s \
-  -e PVE_PREFERRED_INTERFACE=eth0 \
-  -e PVE_ALLOWED_SUBNETS="192.168.1.0/24" \
-  raddadengineer/npm-autodiscovery:latest
+                <pre><code class="language-bash"># Example A: Standard Web App (HTTP on port 8080 with SSL & WebSockets)
+npm.domain=adguard.homelab.arpa, npm.port=8080, npm.ssl=true, npm.websocket=true
 
-# Tag LXC 101 in Proxmox Web GUI or CLI:
-pct set 101 -tags "npm.domain=adguard.homelab.lan,npm.port=80,npm.ssl=true"
+# Example B: Multi-Domain Ingress with Forced HTTPS & Exploit Shielding
+npm.domain=vault.homelab.arpa, bitwarden.homelab.arpa, npm.port=8000, npm.ssl=true, npm.ssl_forced=true, npm.block_exploits=true
 
-# OR add configuration block into LXC Notes textarea:
-npm.domain: vault.homelab.lan
-npm.port: 8000
-npm.ssl: true
-npm.websocket: true</code></pre>
+# Example C: Layer 4 TCP Stream (e.g. Minecraft 25565 or PostgreSQL 5432)
+npm.stream.incoming_port=25565, npm.stream.forward_port=25565, npm.stream.tcp=true
+
+# CLI One-Liner for LXC:
+pct set 101 -tags "npm.domain=adguard.homelab.arpa,npm.port=80,npm.ssl=true,npm.websocket=true"
+
+# CLI One-Liner for QEMU VM:
+qm set 200 -tags "npm.domain=homeassistant.homelab.arpa,npm.port=8123,npm.ssl=true,npm.websocket=true"</code></pre>
               </div>
 
-              <button class="btn btn-secondary btn-sm" onclick="copyDocsGuideCode('pve-guide', 'Proxmox setup snippet copied to clipboard!')">
-                📋 Copy Proxmox Setup Snippet
+              <!-- Method 2: Notes / Description (YAML) -->
+              <h4 style="margin: 1.25rem 0 0.5rem; font-size: 0.95rem; color: #10b981; display: flex; align-items: center; gap: 0.4rem;">
+                <span>📝 Method 2: Proxmox Notes / Description Textarea (Full YAML Block)</span>
+              </h4>
+              <p class="text-muted" style="font-size: 0.82rem; margin-bottom: 0.5rem;">
+                In the Proxmox Web GUI, select your LXC or VM, click <strong>Notes</strong> (or Summary &rarr; Description), and paste a complete YAML configuration block:
+              </p>
+              <div class="code-snippet-wrap mb-3">
+                <pre><code class="language-yaml"># ==============================================================================
+# Proxmox VE Auto-Discovery Metadata (Paste into LXC / VM Notes textarea)
+# ==============================================================================
+
+# Core Ingress Routing (Required)
+npm.domain: vault.homelab.arpa, bitwarden.homelab.arpa
+npm.port: 8000
+npm.scheme: http
+npm.path: /                          # Optional subpath prefix (e.g. /api)
+npm.forward_host: 192.168.1.150      # Optional IP override (auto-detected if blank)
+
+# SSL & Security
+npm.ssl: true                        # Enable SSL certificate in NPM
+npm.ssl_forced: true                 # Redirect HTTP -> HTTPS automatically
+npm.hsts: true                       # Enable HTTP Strict Transport Security
+npm.hsts_subdomains: false           # Include subdomains in HSTS
+npm.block_exploits: true             # Enable common exploit blocking
+
+# Middlewares & Performance
+npm.websocket: true                  # Allow WebSocket upgrade headers (Home Assistant / Plex)
+npm.http2: true                      # HTTP/2 multiplexing support
+npm.caching: false                   # Nginx reverse proxy asset cache
+npm.access_list_id: 1                # Optional NPM Access List ID (Basic Auth / IP whitelist)
+
+# Optional: Layer 4 TCP / UDP Streams (Port Forwarding via NPM)
+# npm.stream.incoming_port: 25565
+# npm.stream.forward_port: 25565
+# npm.stream.tcp: true
+# npm.stream.udp: false</code></pre>
+              </div>
+
+              <!-- Method 3: Environment Setup for Docker -->
+              <h4 style="margin: 1.25rem 0 0.5rem; font-size: 0.95rem; color: #f59e0b; display: flex; align-items: center; gap: 0.4rem;">
+                <span>⚙️ Connecting NPM Auto-Discovery to Proxmox VE</span>
+              </h4>
+              <p class="text-muted" style="font-size: 0.82rem; margin-bottom: 0.5rem;">
+                You can configure endpoints directly via the Web Dashboard (<strong>⚡ Proxmox Configuration Modal</strong>) or via environment variables:
+              </p>
+              <div class="code-snippet-wrap mb-3">
+                <pre><code class="language-bash"># Environment variables (or configure via Dashboard modal):
+PVE_ENABLED=true
+PVE_URL=https://192.168.1.30:8006
+PVE_TOKEN_ID="root@pam!autonpm"
+PVE_TOKEN_SECRET="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+PVE_VERIFY_SSL=false
+PVE_POLL_INTERVAL=15s
+PVE_PREFERRED_INTERFACE=eth0
+PVE_ALLOWED_SUBNETS="192.168.1.0/24"</code></pre>
+              </div>
+
+              <div class="info-alert mb-3" style="background: rgba(245, 158, 11, 0.12); border-color: rgba(245, 158, 11, 0.35); color: #fbbf24;">
+                <strong>⚠️ Proxmox Privilege Separation Note:</strong> When creating your API Token under <em>Datacenter &rarr; Permissions &rarr; API Tokens</em>, uncheck <strong>Privilege Separation</strong> (so the token inherits root permissions), or add an explicit permission at <em>Datacenter &rarr; Permissions &rarr; Add &rarr; API Token Permission</em> (Path: <code>/</code>, Role: <code>PVEAuditor</code> or <code>Administrator</code>).
+              </div>
+
+              <button class="btn btn-secondary btn-sm" onclick="copyDocsGuideCode('pve-guide', 'Proxmox setup template copied to clipboard!')">
+                📋 Copy Proxmox YAML Notes Template
               </button>
             </div>
 
