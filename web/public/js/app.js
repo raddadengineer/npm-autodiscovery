@@ -800,6 +800,11 @@ function initSearchAndFilters() {
     });
   }
 
+  const pruneOfflineBtn = document.getElementById('btn-prune-offline-nodes');
+  if (pruneOfflineBtn) {
+    pruneOfflineBtn.addEventListener('click', pruneOfflineNodes);
+  }
+
   const clusterPill = document.getElementById('cluster-status-pill');
   if (clusterPill) {
     clusterPill.addEventListener('click', () => switchTab('cluster-view'));
@@ -1912,6 +1917,19 @@ async function fetchClusterNodes() {
 
 function updateNodeFilterDropdowns() {
   const nodes = [...new Set(clusterData.map(n => n.node_id))];
+  if (selectedContainersNode !== 'all' && !nodes.includes(selectedContainersNode)) {
+    selectedContainersNode = 'all';
+  }
+  if (selectedProxiesNode !== 'all' && !nodes.includes(selectedProxiesNode)) {
+    selectedProxiesNode = 'all';
+  }
+  if (selectedStreamsNode !== 'all' && !nodes.includes(selectedStreamsNode)) {
+    selectedStreamsNode = 'all';
+  }
+  if (selectedEventsNode !== 'all' && !nodes.includes(selectedEventsNode)) {
+    selectedEventsNode = 'all';
+  }
+
   const dropdowns = [
     { el: document.getElementById('containers-node-filter'), current: selectedContainersNode },
     { el: document.getElementById('proxies-node-filter'), current: selectedProxiesNode },
@@ -1939,6 +1957,18 @@ function renderClusterNodes(filterText = '') {
   if (!grid) return;
 
   grid.innerHTML = '';
+
+  const offlineNodes = clusterData.filter(n => !n.is_controller && n.status === 'offline');
+  const pruneBtn = document.getElementById('btn-prune-offline-nodes');
+  const offlineCountSpan = document.getElementById('offline-nodes-count');
+  if (pruneBtn) {
+    if (offlineNodes.length > 0) {
+      pruneBtn.style.display = 'inline-flex';
+      if (offlineCountSpan) offlineCountSpan.textContent = offlineNodes.length;
+    } else {
+      pruneBtn.style.display = 'none';
+    }
+  }
 
   const filtered = clusterData.filter(n => {
     if (!filterText) return true;
@@ -2034,6 +2064,15 @@ function renderClusterNodes(filterText = '') {
         <div class="node-card-footer">
           <span style="font-size:0.75rem; color:var(--text-muted);">Uptime: ${escapeHtml(uptimeStr)}</span>
           <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
+            ${(!node.is_controller && !isOnline) ? `
+              <button class="btn btn-danger btn-sm" onclick="removeClusterNode('${escapeHtml(nodeId)}')" title="Remove offline node from cluster registry">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px; margin-right:2px;">
+                  <polyline points="3 6 5 6 21 6"></polyline>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                </svg>
+                Remove
+              </button>
+            ` : ''}
             <button class="btn btn-secondary btn-sm" onclick="openProxmoxModal('${escapeHtml(nodeId)}')">
               ⚡ Proxmox VE
             </button>
@@ -2050,6 +2089,80 @@ function renderClusterNodes(filterText = '') {
     }
   });
 }
+
+async function removeClusterNode(nodeId) {
+  if (!nodeId) return;
+  if (!confirm(`Are you sure you want to remove offline node "${nodeId}" from the cluster registry?`)) {
+    return;
+  }
+
+  try {
+    const res = await fetch(`/api/cluster/nodes/${encodeURIComponent(nodeId)}`, {
+      method: 'DELETE'
+    });
+
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      const errMsg = errData.error || errData.message || (await res.text()) || `HTTP ${res.status}`;
+      throw new Error(errMsg);
+    }
+
+    showToast(`Removed offline node "${nodeId}" from cluster`, 'success');
+    await fetchClusterNodes();
+    await fetchStatus();
+    await fetchProxies();
+    await fetchContainers();
+    await fetchStreams();
+  } catch (err) {
+    console.error('Failed to remove node:', err);
+    showToast(`Failed to remove node: ${err.message}`, 'error');
+  }
+}
+
+async function pruneOfflineNodes() {
+  const offlineNodes = clusterData.filter(n => !n.is_controller && n.status === 'offline');
+  if (offlineNodes.length === 0) {
+    showToast('No offline nodes to prune', 'info');
+    return;
+  }
+
+  const names = offlineNodes.map(n => n.node_id).join(', ');
+  if (!confirm(`Are you sure you want to remove all ${offlineNodes.length} offline node(s) (${names}) from cluster registry?`)) {
+    return;
+  }
+
+  const btn = document.getElementById('btn-prune-offline-nodes');
+  if (btn) btn.disabled = true;
+
+  try {
+    const res = await fetch('/api/cluster/nodes?offline=true', {
+      method: 'DELETE'
+    });
+
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      const errMsg = errData.error || errData.message || (await res.text()) || `HTTP ${res.status}`;
+      throw new Error(errMsg);
+    }
+
+    const data = await res.json();
+    const count = data.count !== undefined ? data.count : offlineNodes.length;
+    showToast(`Successfully pruned ${count} offline node(s)`, 'success');
+    await fetchClusterNodes();
+    await fetchStatus();
+    await fetchProxies();
+    await fetchContainers();
+    await fetchStreams();
+  } catch (err) {
+    console.error('Failed to prune offline nodes:', err);
+    showToast(`Failed to prune offline nodes: ${err.message}`, 'error');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+window.removeClusterNode = removeClusterNode;
+window.pruneOfflineNodes = pruneOfflineNodes;
 
 function filterContainersByNode(nodeId) {
   selectedContainersNode = nodeId;

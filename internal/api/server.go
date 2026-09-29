@@ -51,9 +51,11 @@ func (s *Server) Start() error {
 
 	// Multi-Node Cluster Control Plane Routes
 	mux.HandleFunc("/api/cluster/nodes", s.handleClusterNodes)
+	mux.HandleFunc("/api/cluster/nodes/prune", s.handleClusterNodesPrune)
+	mux.HandleFunc("/api/cluster/nodes/{nodeId}", s.handleClusterNodeDetail)
+	mux.HandleFunc("/api/cluster/nodes/{nodeId}/proxmox", s.handleNodeProxmox)
 	mux.HandleFunc("/api/cluster/report", s.handleClusterReport)
 	mux.HandleFunc("/api/cluster/setup-info", s.handleClusterSetupInfo)
-	mux.HandleFunc("/api/cluster/nodes/{nodeId}/proxmox", s.handleNodeProxmox)
 	mux.HandleFunc("/api/proxmox/config", s.handleLocalProxmoxConfig)
 	mux.HandleFunc("/api/proxmox/test", s.handleProxmoxTest)
 
@@ -325,25 +327,155 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	metrics.Handler().ServeHTTP(w, r)
 }
 
-// handleClusterNodes returns all nodes participating in the multi-host cluster.
+// handleClusterNodes returns all nodes or removes/prunes offline nodes.
 func (s *Server) handleClusterNodes(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
+	switch r.Method {
+	case http.MethodGet:
+		nodes := s.syncer.GetClusterNodes()
+		onlineCount := 0
+		for _, n := range nodes {
+			if n.Status == "online" {
+				onlineCount++
+			}
+		}
+
+		s.writeJSON(w, http.StatusOK, map[string]interface{}{
+			"nodes":        nodes,
+			"count":        len(nodes),
+			"online_count": onlineCount,
+		})
+
+	case http.MethodDelete:
+		nodeID := r.URL.Query().Get("id")
+		if nodeID == "" {
+			nodeID = r.URL.Query().Get("node_id")
+		}
+		if nodeID != "" {
+			force := r.URL.Query().Get("force") == "true"
+			if err := s.syncer.DeleteClusterNode(nodeID, force); err != nil {
+				if strings.Contains(err.Error(), "not found") {
+					http.Error(w, err.Error(), http.StatusNotFound)
+				} else {
+					http.Error(w, err.Error(), http.StatusBadRequest)
+				}
+				return
+			}
+			s.writeJSON(w, http.StatusOK, map[string]interface{}{
+				"success": true,
+				"message": fmt.Sprintf("Node '%s' removed from cluster", nodeID),
+				"node_id": nodeID,
+			})
+			return
+		}
+
+		// Prune all offline nodes
+		removed, err := s.syncer.DeleteOfflineClusterNodes()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		s.writeJSON(w, http.StatusOK, map[string]interface{}{
+			"success": true,
+			"removed": removed,
+			"count":   len(removed),
+			"message": fmt.Sprintf("Removed %d offline node(s)", len(removed)),
+		})
+
+	case http.MethodPost:
+		var body struct {
+			Action string `json:"action"`
+			NodeID string `json:"node_id"`
+			Force  bool   `json:"force"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
+			return
+		}
+
+		if strings.EqualFold(body.Action, "prune") {
+			removed, err := s.syncer.DeleteOfflineClusterNodes()
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			s.writeJSON(w, http.StatusOK, map[string]interface{}{
+				"success": true,
+				"removed": removed,
+				"count":   len(removed),
+				"message": fmt.Sprintf("Removed %d offline node(s)", len(removed)),
+			})
+			return
+		} else if strings.EqualFold(body.Action, "delete") && body.NodeID != "" {
+			if err := s.syncer.DeleteClusterNode(body.NodeID, body.Force); err != nil {
+				if strings.Contains(err.Error(), "not found") {
+					http.Error(w, err.Error(), http.StatusNotFound)
+				} else {
+					http.Error(w, err.Error(), http.StatusBadRequest)
+				}
+				return
+			}
+			s.writeJSON(w, http.StatusOK, map[string]interface{}{
+				"success": true,
+				"message": fmt.Sprintf("Node '%s' removed from cluster", body.NodeID),
+				"node_id": body.NodeID,
+			})
+			return
+		}
+		http.Error(w, "Invalid action. Supported actions: 'prune', 'delete'", http.StatusBadRequest)
+
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// handleClusterNodeDetail handles operations on a specific cluster node.
+func (s *Server) handleClusterNodeDetail(w http.ResponseWriter, r *http.Request) {
+	nodeID := r.PathValue("nodeId")
+	if nodeID == "" {
+		http.Error(w, "Node ID is required", http.StatusBadRequest)
+		return
+	}
+
+	switch r.Method {
+	case http.MethodDelete:
+		force := r.URL.Query().Get("force") == "true"
+		if err := s.syncer.DeleteClusterNode(nodeID, force); err != nil {
+			if strings.Contains(err.Error(), "not found") {
+				http.Error(w, err.Error(), http.StatusNotFound)
+			} else {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+			}
+			return
+		}
+		s.writeJSON(w, http.StatusOK, map[string]interface{}{
+			"success": true,
+			"message": fmt.Sprintf("Node '%s' removed from cluster", nodeID),
+			"node_id": nodeID,
+		})
+
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// handleClusterNodesPrune handles POST or DELETE /api/cluster/nodes/prune.
+func (s *Server) handleClusterNodesPrune(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost && r.Method != http.MethodDelete {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	nodes := s.syncer.GetClusterNodes()
-	onlineCount := 0
-	for _, n := range nodes {
-		if n.Status == "online" {
-			onlineCount++
-		}
+	removed, err := s.syncer.DeleteOfflineClusterNodes()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
 	s.writeJSON(w, http.StatusOK, map[string]interface{}{
-		"nodes":        nodes,
-		"count":        len(nodes),
-		"online_count": onlineCount,
+		"success": true,
+		"removed": removed,
+		"count":   len(removed),
+		"message": fmt.Sprintf("Removed %d offline node(s)", len(removed)),
 	})
 }
 

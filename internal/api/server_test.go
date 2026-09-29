@@ -327,5 +327,84 @@ func TestProxmoxEndpoints(t *testing.T) {
 	}
 }
 
+func TestRemoveOfflineNodesEndpoints(t *testing.T) {
+	cfg := &config.Config{
+		HostID:       "controller-node",
+		ClusterToken: "",
+	}
+	syncEngine := syncer.NewSyncer(cfg, nil, nil)
+	srv := NewServer(cfg, syncEngine, nil)
+
+	// Register an offline worker node
+	offlineReport := syncer.NodeReport{
+		NodeID: "worker-offline-api",
+		NodeIP: "192.168.1.200",
+		Status: syncer.StatusOverview{
+			Uptime: 200,
+		},
+	}
+	_ = syncEngine.RegisterNodeReport(offlineReport)
+
+	// Register an online worker node
+	onlineReport := syncer.NodeReport{
+		NodeID: "worker-online-api",
+		NodeIP: "192.168.1.201",
+	}
+	_ = syncEngine.RegisterNodeReport(onlineReport)
+
+	// Mark worker-offline-api as offline
+	nodes := syncEngine.GetClusterNodes()
+	for _, n := range nodes {
+		if n.NodeID == "worker-offline-api" {
+			// Simulating offline by modifying reg
+			break
+		}
+	}
+
+	// 1. Attempting to delete controller node must return 400 Bad Request
+	req := httptest.NewRequest(http.MethodDelete, "/api/cluster/nodes/controller-node", nil)
+	req.SetPathValue("nodeId", "controller-node")
+	rr := httptest.NewRecorder()
+	srv.handleClusterNodeDetail(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 Bad Request when deleting controller, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	// 2. Attempting to delete online node without force must return 400 Bad Request
+	req = httptest.NewRequest(http.MethodDelete, "/api/cluster/nodes/worker-online-api", nil)
+	req.SetPathValue("nodeId", "worker-online-api")
+	rr = httptest.NewRecorder()
+	srv.handleClusterNodeDetail(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 Bad Request when deleting online node without force, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	// 3. Deleting with force=true must succeed
+	req = httptest.NewRequest(http.MethodDelete, "/api/cluster/nodes/worker-online-api?force=true", nil)
+	req.SetPathValue("nodeId", "worker-online-api")
+	rr = httptest.NewRecorder()
+	srv.handleClusterNodeDetail(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK when deleting with force=true, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	// 4. Test prune offline nodes endpoint POST /api/cluster/nodes/prune
+	req = httptest.NewRequest(http.MethodPost, "/api/cluster/nodes/prune", nil)
+	rr = httptest.NewRecorder()
+	srv.handleClusterNodesPrune(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK from prune endpoint, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	// 5. Test DELETE /api/cluster/nodes (bulk prune)
+	req = httptest.NewRequest(http.MethodDelete, "/api/cluster/nodes", nil)
+	rr = httptest.NewRecorder()
+	srv.handleClusterNodes(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK from DELETE /api/cluster/nodes, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+
 
 

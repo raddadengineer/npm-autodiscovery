@@ -320,6 +320,23 @@ body {
   color: var(--text-primary);
 }
 
+.btn-danger {
+  background: rgba(244, 63, 94, 0.15);
+  border-color: rgba(244, 63, 94, 0.35);
+  color: #f43f5e;
+}
+
+.btn-danger:hover {
+  background: rgba(244, 63, 94, 0.28);
+  border-color: rgba(244, 63, 94, 0.6);
+  color: #fff;
+  box-shadow: 0 0 14px rgba(244, 63, 94, 0.3);
+}
+
+.btn-danger:active {
+  transform: translateY(0);
+}
+
 .btn-sm {
   padding: 0.25rem 0.65rem;
   font-size: 0.75rem;

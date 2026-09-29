@@ -904,6 +904,103 @@ func (r *ClusterRegistry) GetRemoteStreams() []*ManagedStream {
 	return all
 }
 
+// DeleteNode removes a remote worker node from the cluster registry.
+// Returns an error if the node is not found, or if it is currently online (unless force is true).
+func (r *ClusterRegistry) DeleteNode(nodeID string, force bool) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	cleanID := strings.TrimSpace(nodeID)
+	if cleanID == "" {
+		return fmt.Errorf("node ID must not be empty")
+	}
+
+	var foundKey string
+	var nodeInfo *ClusterNodeInfo
+	for k, n := range r.nodes {
+		if strings.EqualFold(k, cleanID) {
+			foundKey = k
+			nodeInfo = n
+			break
+		}
+	}
+
+	if foundKey == "" {
+		return fmt.Errorf("node '%s' not found", cleanID)
+	}
+
+	if nodeInfo.IsController {
+		return fmt.Errorf("cannot remove controller node '%s'", cleanID)
+	}
+
+	now := time.Now()
+	isOnline := now.Sub(nodeInfo.LastHeartbeat) <= 45*time.Second
+	if isOnline && !force {
+		return fmt.Errorf("cannot remove online node '%s'; node must be offline (no heartbeat for >45s) or forced", cleanID)
+	}
+
+	delete(r.nodes, foundKey)
+
+	// Clean up any associated PVE configs for this node
+	targetPVEKey := r.resolveNodeKeyLocked(cleanID)
+	pveDeleted := false
+	if _, ok := r.pveConfigs[targetPVEKey]; ok {
+		delete(r.pveConfigs, targetPVEKey)
+		pveDeleted = true
+	}
+	if foundKey != targetPVEKey {
+		if _, ok := r.pveConfigs[foundKey]; ok {
+			delete(r.pveConfigs, foundKey)
+			pveDeleted = true
+		}
+	}
+	if pveDeleted {
+		r.savePersistedPVEConfigsLocked()
+	}
+
+	return nil
+}
+
+// DeleteOfflineNodes removes all remote worker nodes whose heartbeat is older than 45 seconds.
+// It returns the slice of removed node IDs.
+func (r *ClusterRegistry) DeleteOfflineNodes() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	now := time.Now()
+	var removed []string
+	var pveChanged bool
+
+	for k, n := range r.nodes {
+		if n.IsController {
+			continue
+		}
+		if now.Sub(n.LastHeartbeat) > 45*time.Second {
+			delete(r.nodes, k)
+			removed = append(removed, k)
+
+			targetPVEKey := r.resolveNodeKeyLocked(k)
+			if _, ok := r.pveConfigs[targetPVEKey]; ok {
+				delete(r.pveConfigs, targetPVEKey)
+				pveChanged = true
+			}
+			if k != targetPVEKey {
+				if _, ok := r.pveConfigs[k]; ok {
+					delete(r.pveConfigs, k)
+					pveChanged = true
+				}
+			}
+		}
+	}
+
+	if pveChanged {
+		r.savePersistedPVEConfigsLocked()
+	}
+
+	sort.Strings(removed)
+	return removed
+}
+
 // RegisterNodeReport stores telemetry report and merges logs into live SSE stream.
 func (s *Syncer) RegisterNodeReport(report NodeReport) error {
 	if strings.TrimSpace(report.NodeID) == "" {

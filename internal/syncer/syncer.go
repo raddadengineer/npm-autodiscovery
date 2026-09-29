@@ -3206,6 +3206,47 @@ func (s *Syncer) DeleteNodePVEConfig(nodeID string, configID string) error {
 	return fmt.Errorf("cluster registry unavailable")
 }
 
+// DeleteClusterNode removes a remote worker node from the cluster.
+func (s *Syncer) DeleteClusterNode(nodeID string, force bool) error {
+	if s.clusterRegistry == nil {
+		return fmt.Errorf("cluster registry unavailable")
+	}
+
+	localID := s.cfg.HostID
+	if localID == "" {
+		localID = "controller-main"
+	}
+	if strings.EqualFold(nodeID, localID) || strings.EqualFold(nodeID, "controller-main") || strings.EqualFold(nodeID, "local") {
+		return fmt.Errorf("cannot remove controller node '%s'", nodeID)
+	}
+
+	err := s.clusterRegistry.DeleteNode(nodeID, force)
+	if err != nil {
+		return err
+	}
+
+	s.EmitLog(LevelInfo, "cluster",
+		fmt.Sprintf("Removed node '%s' from cluster", nodeID),
+		"Decommissioned worker node removed from cluster registry")
+
+	return nil
+}
+
+// DeleteOfflineClusterNodes removes all offline nodes from the cluster.
+func (s *Syncer) DeleteOfflineClusterNodes() ([]string, error) {
+	if s.clusterRegistry == nil {
+		return nil, nil
+	}
+
+	removed := s.clusterRegistry.DeleteOfflineNodes()
+	if len(removed) > 0 {
+		s.EmitLog(LevelInfo, "cluster",
+			fmt.Sprintf("Pruned %d offline node(s) from cluster: %s", len(removed), strings.Join(removed, ", ")),
+			"Decommissioned offline nodes purged from cluster registry")
+	}
+	return removed, nil
+}
+
 // ApplyDynamicPVEConfigs applies multiple Proxmox VE configurations at runtime.
 func (s *Syncer) ApplyDynamicPVEConfigs(cfgs []PVEConfig) error {
 	s.mu.Lock()

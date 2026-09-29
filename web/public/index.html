@@ -28,7 +28,7 @@
           </div>
           <div class="brand-text">
             <h1>NPM Auto-Discovery</h1>
-            <span class="badge version-badge">v2.0.9</span>
+            <span class="badge version-badge">v2.1.0</span>
           </div>
         </div>
 
@@ -519,6 +519,13 @@
                   <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
                 </svg>
                 <span>Refresh Nodes</span>
+              </button>
+              <button class="btn btn-secondary btn-sm" id="btn-prune-offline-nodes" title="Remove all offline nodes from cluster registry" style="display: none; border-color: rgba(244, 63, 94, 0.4); color: #f43f5e;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="3 6 5 6 21 6"></polyline>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                </svg>
+                <span>Prune Offline (<span id="offline-nodes-count">0</span>)</span>
               </button>
               <button class="btn btn-primary btn-sm" id="btn-open-add-node" title="Add a remote worker node and generate configuration">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

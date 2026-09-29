@@ -372,3 +372,96 @@ func TestClusterRegistry_DeleteDefaultEndpointAndTelemetryNode(t *testing.T) {
 	}
 }
 
+func TestDeleteNodeAndPruneOfflineNodes(t *testing.T) {
+	reg := NewClusterRegistry()
+
+	// 1. Register an active online node
+	reg.RegisterOrUpdate(NodeReport{
+		NodeID:     "worker-online",
+		NodeIP:     "192.168.1.100",
+		ReportedAt: time.Now(),
+		Status: StatusOverview{
+			Uptime:          100,
+			DockerConnected: true,
+		},
+	})
+
+	// 2. Register an offline node (heartbeat 60s ago)
+	reg.RegisterOrUpdate(NodeReport{
+		NodeID:     "worker-offline-1",
+		NodeIP:     "192.168.1.101",
+		ReportedAt: time.Now().Add(-60 * time.Second),
+		Status: StatusOverview{
+			Uptime:          50,
+			DockerConnected: false,
+		},
+	})
+	// Manually set LastHeartbeat in reg.nodes to 60s ago to simulate offline
+	reg.mu.Lock()
+	if n, ok := reg.nodes["worker-offline-1"]; ok {
+		n.LastHeartbeat = time.Now().Add(-60 * time.Second)
+	}
+	reg.mu.Unlock()
+
+	// 3. Register a second offline node
+	reg.RegisterOrUpdate(NodeReport{
+		NodeID:     "worker-offline-2",
+		NodeIP:     "192.168.1.102",
+		ReportedAt: time.Now().Add(-120 * time.Second),
+	})
+	reg.mu.Lock()
+	if n, ok := reg.nodes["worker-offline-2"]; ok {
+		n.LastHeartbeat = time.Now().Add(-120 * time.Second)
+	}
+	reg.mu.Unlock()
+
+	// Set PVE config for worker-offline-1
+	reg.SetNodePVEConfig("worker-offline-1", PVEConfig{
+		ID:      "pve-1",
+		Enabled: true,
+		URL:     "https://pve-offline:8006",
+	})
+
+	// 4. Attempt to delete online node without force -> should fail
+	err := reg.DeleteNode("worker-online", false)
+	if err == nil {
+		t.Fatalf("expected error deleting online node without force, got nil")
+	}
+
+	// 5. Delete online node with force -> should succeed
+	err = reg.DeleteNode("worker-online", true)
+	if err != nil {
+		t.Fatalf("expected successful deletion with force=true, got: %v", err)
+	}
+
+	// 6. Attempt to delete non-existent node -> should fail
+	err = reg.DeleteNode("unknown-node", false)
+	if err == nil {
+		t.Fatalf("expected error deleting unknown node, got nil")
+	}
+
+	// 7. Delete worker-offline-1
+	err = reg.DeleteNode("worker-offline-1", false)
+	if err != nil {
+		t.Fatalf("expected successful deletion of offline node, got: %v", err)
+	}
+	// Verify PVE config was also cleaned up
+	if len(reg.GetNodePVEConfigs("worker-offline-1")) != 0 {
+		t.Fatalf("expected PVE config to be removed for deleted node")
+	}
+
+	// 8. Test DeleteOfflineNodes with worker-offline-2 still remaining
+	removed := reg.DeleteOfflineNodes()
+	if len(removed) != 1 || removed[0] != "worker-offline-2" {
+		t.Fatalf("expected DeleteOfflineNodes to return ['worker-offline-2'], got: %v", removed)
+	}
+
+	// Verify registry is now empty of remote nodes
+	localNode := ClusterNodeInfo{NodeID: "controller-main", IsController: true, Status: "online"}
+	allNodes := reg.GetNodes(localNode)
+	if len(allNodes) != 1 {
+		t.Fatalf("expected only controller node to remain, got %d nodes", len(allNodes))
+	}
+}
+
+
