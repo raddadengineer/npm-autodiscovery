@@ -140,9 +140,11 @@ func (r *ClusterRegistry) RegisterOrUpdate(report NodeReport) {
 	var pveConfigs []PVEConfig
 
 	targetPVEKey := r.resolveNodeKeyLocked(report.NodeID)
+	pveConnected := report.Status.PVEConnected
 	if cfgs, ok := r.pveConfigs[targetPVEKey]; ok {
 		if len(cfgs) == 0 {
 			pveEnabled = false
+			pveConnected = false
 			pveURL = ""
 			pveNode = ""
 		} else {
@@ -155,6 +157,9 @@ func (r *ClusterRegistry) RegisterOrUpdate(report NodeReport) {
 				if c.Enabled {
 					pveEnabled = true
 				}
+			}
+			if !pveEnabled {
+				pveConnected = false
 			}
 			primary := cfgs[0]
 			for _, c := range cfgs {
@@ -175,6 +180,15 @@ func (r *ClusterRegistry) RegisterOrUpdate(report NodeReport) {
 			pvePrefIface = primary.PreferredInterface
 			pveSubnets = primary.AllowedSubnets
 		}
+	} else if !pveEnabled {
+		pveConnected = false
+	}
+
+	overview := report.Status
+	if !pveEnabled {
+		overview.PVEEnabled = false
+		overview.PVEConnected = false
+		overview.PVEURL = ""
 	}
 
 	info := &ClusterNodeInfo{
@@ -188,7 +202,7 @@ func (r *ClusterRegistry) RegisterOrUpdate(report NodeReport) {
 		DockerVersion:         report.Status.DockerVersion,
 		NPMConnected:          report.Status.NPMConnected,
 		PVEEnabled:            pveEnabled,
-		PVEConnected:          report.Status.PVEConnected,
+		PVEConnected:          pveConnected,
 		PVEURL:                pveURL,
 		PVENode:               pveNode,
 		PVEVersion:            report.Status.PVEVersion,
@@ -203,7 +217,7 @@ func (r *ClusterRegistry) RegisterOrUpdate(report NodeReport) {
 		ContainerCount:        len(taggedContainers),
 		ProxyCount:            len(taggedProxies),
 		StreamCount:           len(taggedStreams),
-		Overview:              report.Status,
+		Overview:              overview,
 		Containers:            taggedContainers,
 		Proxies:               taggedProxies,
 		Streams:               taggedStreams,
@@ -439,58 +453,61 @@ func (r *ClusterRegistry) SetNodePVEConfigs(nodeID string, cfgs []PVEConfig) {
 }
 
 func (r *ClusterRegistry) updateNodeInfoPVELocked(nodeID string) {
-	node, ok := r.nodes[nodeID]
-	if !ok {
-		return
-	}
+	targetKey := r.resolveNodeKeyLocked(nodeID)
+	cfgs := r.pveConfigs[targetKey]
 
-	cfgs := r.pveConfigs[nodeID]
-	node.PVEConfigs = make([]PVEConfig, len(cfgs))
-	anyEnabled := false
-	for i, c := range cfgs {
-		cp := *c
-		cp.HasSecret = cp.TokenSecret != ""
-		node.PVEConfigs[i] = cp
-		if c.Enabled {
-			anyEnabled = true
-		}
-	}
-	node.PVEEnabled = anyEnabled
-	node.PVEEndpointCount = len(cfgs)
+	for k, node := range r.nodes {
+		if strings.EqualFold(k, nodeID) || strings.EqualFold(k, targetKey) {
+			node.PVEConfigs = make([]PVEConfig, len(cfgs))
+			anyEnabled := false
+			for i, c := range cfgs {
+				cp := *c
+				cp.HasSecret = cp.TokenSecret != ""
+				node.PVEConfigs[i] = cp
+				if c.Enabled {
+					anyEnabled = true
+				}
+			}
+			node.PVEEnabled = anyEnabled
+			node.PVEEndpointCount = len(cfgs)
 
-	if len(cfgs) > 0 {
-		primary := cfgs[0]
-		for _, c := range cfgs {
-			if c.Enabled {
-				primary = c
-				break
+			if len(cfgs) > 0 {
+				primary := cfgs[0]
+				for _, c := range cfgs {
+					if c.Enabled {
+						primary = c
+						break
+					}
+				}
+				node.PVEURL = primary.URL
+				node.PVENode = primary.Node
+				node.PVETokenID = primary.TokenID
+				node.PVEHasSecret = primary.HasSecret
+				node.PVEVerifySSL = primary.VerifySSL
+				node.PVEPreferredInterface = primary.PreferredInterface
+				node.PVEAllowedSubnets = primary.AllowedSubnets
+				if !anyEnabled {
+					node.PVEConnected = false
+					node.Overview.PVEConnected = false
+					node.Overview.PVEEnabled = false
+				}
+			} else {
+				node.PVEURL = ""
+				node.PVENode = ""
+				node.PVETokenID = ""
+				node.PVEHasSecret = false
+				node.PVEVerifySSL = false
+				node.PVEPreferredInterface = ""
+				node.PVEAllowedSubnets = ""
+				node.PVEConnected = false
+				node.PVEEnabled = false
+				node.PVEConfigs = nil
+				node.PVEEndpointCount = 0
+				node.Overview.PVEEnabled = false
+				node.Overview.PVEURL = ""
+				node.Overview.PVEConnected = false
 			}
 		}
-		node.PVEURL = primary.URL
-		node.PVENode = primary.Node
-		node.PVETokenID = primary.TokenID
-		node.PVEHasSecret = primary.HasSecret
-		node.PVEVerifySSL = primary.VerifySSL
-		node.PVEPreferredInterface = primary.PreferredInterface
-		node.PVEAllowedSubnets = primary.AllowedSubnets
-		if !anyEnabled {
-			node.PVEConnected = false
-		}
-	} else {
-		node.PVEURL = ""
-		node.PVENode = ""
-		node.PVETokenID = ""
-		node.PVEHasSecret = false
-		node.PVEVerifySSL = false
-		node.PVEPreferredInterface = ""
-		node.PVEAllowedSubnets = ""
-		node.PVEConnected = false
-		node.PVEEnabled = false
-		node.PVEConfigs = nil
-		node.PVEEndpointCount = 0
-		node.Overview.PVEEnabled = false
-		node.Overview.PVEURL = ""
-		node.Overview.PVEConnected = false
 	}
 }
 
@@ -779,6 +796,7 @@ func (r *ClusterRegistry) GetNodes(localNode ClusterNodeInfo) []ClusterNodeInfo 
 				cp.PVEConfigs = nil
 				cp.PVEEndpointCount = 0
 				cp.PVEEnabled = false
+				cp.PVEConnected = false
 				cp.PVEURL = ""
 				cp.PVENode = ""
 				cp.PVETokenID = ""
@@ -821,7 +839,17 @@ func (r *ClusterRegistry) GetNodes(localNode ClusterNodeInfo) []ClusterNodeInfo 
 				cp.PVEVerifySSL = primary.VerifySSL
 				cp.PVEPreferredInterface = primary.PreferredInterface
 				cp.PVEAllowedSubnets = primary.AllowedSubnets
+				if !anyEnabled {
+					cp.PVEConnected = false
+					cp.Overview.PVEConnected = false
+					cp.Overview.PVEEnabled = false
+				}
 			}
+		}
+		if !cp.PVEEnabled {
+			cp.PVEConnected = false
+			cp.Overview.PVEConnected = false
+			cp.Overview.PVEEnabled = false
 		}
 		// Nodes without heartbeat for > 45 seconds are marked offline
 		if now.Sub(cp.LastHeartbeat) > 45*time.Second {

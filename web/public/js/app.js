@@ -2018,7 +2018,7 @@ function renderClusterNodes(filterText = '') {
           <div class="node-engine-row" style="cursor: pointer;" onclick="openProxmoxModal('${escapeHtml(nodeId)}')" title="Configure Proxmox VE Discovery">
             <span class="text-muted">⚡ Proxmox VE:</span>
             <span>
-              ${node.pve_connected 
+              ${((node.pve_enabled || (node.overview && node.overview.pve_enabled)) && node.pve_connected)
                 ? `<span style="color:#10b981; font-weight:600;">Active</span> <span style="font-size:0.75rem; color:var(--text-muted);">(${node.pve_endpoint_count && node.pve_endpoint_count > 1 ? `${node.pve_endpoint_count} endpoints` : escapeHtml(node.pve_version || 'connected')})</span>` 
                 : ((node.pve_enabled || (node.overview && node.overview.pve_enabled))
                     ? `<span style="color:#f59e0b; font-weight:600;">Enabled</span> <span style="font-size:0.75rem; color:var(--text-muted);">(${node.pve_endpoint_count && node.pve_endpoint_count > 1 ? `${node.pve_endpoint_count} endpoints` : 'Connecting...'})</span>` 

@@ -312,6 +312,42 @@ func TestClusterRegistry_DeleteDefaultEndpointAndTelemetryNode(t *testing.T) {
 		t.Fatalf("expected HasExplicitEmptyPVEConfigs('monitor') to be true")
 	}
 
+	// Verify GetNodes returns monitor as PVEEnabled=false and PVEConnected=false
+	nodes := reg.GetNodes(ClusterNodeInfo{NodeID: "controller-main", IsController: true})
+	for _, n := range nodes {
+		if n.NodeID == "monitor" {
+			if n.PVEConnected {
+				t.Fatalf("expected monitor.PVEConnected to be false after deletion, got true")
+			}
+			if n.PVEEnabled {
+				t.Fatalf("expected monitor.PVEEnabled to be false after deletion, got true")
+			}
+		}
+	}
+
+	// Heartbeat from remote worker still reporting PVEConnected: true must be overridden by registry
+	reg.RegisterOrUpdate(NodeReport{
+		NodeID: "monitor",
+		NodeIP: "192.168.1.150",
+		Status: StatusOverview{
+			PVEEnabled:   true,
+			PVEConnected: true,
+			PVEURL:       "https://monitor-pve:8006",
+			PVENode:      "monitor",
+		},
+	})
+	nodesAfterHeartbeat := reg.GetNodes(ClusterNodeInfo{NodeID: "controller-main", IsController: true})
+	for _, n := range nodesAfterHeartbeat {
+		if n.NodeID == "monitor" {
+			if n.PVEConnected {
+				t.Fatalf("expected monitor.PVEConnected to be false after heartbeat override, got true")
+			}
+			if n.PVEEnabled {
+				t.Fatalf("expected monitor.PVEEnabled to be false after heartbeat override, got true")
+			}
+		}
+	}
+
 	// Case 2: Node has sole endpoint with random generated ID like "pve-1790563574911"
 	reg.SetNodePVEConfig("worker-node-02", PVEConfig{
 		ID:      "pve-1790563574911",
