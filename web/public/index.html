@@ -836,6 +836,57 @@
             </details>
           </div>
 
+          <!-- Request Logs & Error Inspector -->
+          <div class="npm-requests-card glass-panel" id="npm-requests-inspector-card">
+            <div class="npm-requests-card-header">
+              <div>
+                <div class="npm-inspector-title-row">
+                  <h3>Request Logs & Error Inspector</h3>
+                  <span class="npm-live-indicator"><span class="pulse-dot"></span> History Recorded</span>
+                  <span class="npm-counter-pill" id="npm-requests-counter-badge">0 requests</span>
+                </div>
+                <p class="panel-subtitle" id="npm-requests-inspector-subtitle">
+                  Inspect individual requests, status codes, and upstream error diagnostics across proxy hosts over time.
+                </p>
+              </div>
+              <div class="npm-inspector-controls">
+                <div class="npm-filter-pills" id="npm-request-type-pills">
+                  <button type="button" class="npm-type-pill active" data-type="all" onclick="filterRequestEvents('all')">All Requests</button>
+                  <button type="button" class="npm-type-pill pill-errors" data-type="errors" onclick="filterRequestEvents('errors')">Errors (4xx / 5xx)</button>
+                  <button type="button" class="npm-type-pill pill-5xx" data-type="5xx" onclick="filterRequestEvents('5xx')">5xx Server</button>
+                  <button type="button" class="npm-type-pill pill-4xx" data-type="4xx" onclick="filterRequestEvents('4xx')">4xx Client</button>
+                </div>
+                <div class="search-input-wrap">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                  </svg>
+                  <input type="text" id="npm-requests-search" placeholder="Search path, error, IP, host..." />
+                </div>
+              </div>
+            </div>
+
+            <div class="table-responsive npm-requests-table-wrap">
+              <table class="data-table npm-requests-table">
+                <thead>
+                  <tr>
+                    <th style="width: 110px;">Time</th>
+                    <th style="width: 105px;">Status</th>
+                    <th>Method & Path</th>
+                    <th>Host / Domain</th>
+                    <th>Client IP</th>
+                    <th style="text-align:right; width: 85px;">Latency</th>
+                    <th>Error & Diagnostic Details</th>
+                    <th style="text-align:center; width: 65px;">Inspect</th>
+                  </tr>
+                </thead>
+                <tbody id="npm-requests-table-tbody">
+                  <!-- Populated dynamically -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+
           <!-- Hosts Table Card -->
           <div class="npm-hosts-card glass-panel">
             <div class="npm-hosts-card-header">
@@ -2016,6 +2067,22 @@ PUSH_INTERVAL=15s</code></pre>
         <button class="modal-close" onclick="closeModal()">&times;</button>
       </div>
       <div class="modal-body" id="modal-content">
+        <!-- Content inserted dynamically -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Request & Error Diagnostic Details -->
+  <div class="modal-overlay" id="request-detail-modal" style="display: none;">
+    <div class="modal-card modal-card-lg glass-panel">
+      <div class="modal-header">
+        <div style="display: flex; align-items: center; gap: 0.75rem;">
+          <h3 id="req-modal-title">Request Diagnostics Inspector</h3>
+          <span id="req-modal-status-badge" class="npm-feature-pill">200 OK</span>
+        </div>
+        <button class="modal-close" onclick="closeRequestDetailModal()">&times;</button>
+      </div>
+      <div class="modal-body" id="req-modal-body">
         <!-- Content inserted dynamically -->
       </div>
     </div>

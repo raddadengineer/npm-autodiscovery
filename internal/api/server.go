@@ -50,6 +50,7 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/config", s.handleConfig)
 	mux.HandleFunc("/api/metrics/overview", s.handleMetricsOverview)
 	mux.HandleFunc("/api/metrics/probe", s.handleMetricsProbe)
+	mux.HandleFunc("/api/metrics/requests", s.handleMetricsRequests)
 
 	// Multi-Node Cluster Control Plane Routes
 	mux.HandleFunc("/api/cluster/nodes", s.handleClusterNodes)
@@ -356,6 +357,34 @@ func (s *Server) handleMetricsProbe(w http.ResponseWriter, r *http.Request) {
 		"status":       "ok",
 		"probed_hosts": probed,
 		"message":      fmt.Sprintf("Probed %d NPM proxy host(s)", probed),
+	})
+}
+
+// handleMetricsRequests returns filtered request logs, status codes, and error diagnostics over time.
+func (s *Server) handleMetricsRequests(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	period := r.URL.Query().Get("period")
+	host := r.URL.Query().Get("host")
+	class := r.URL.Query().Get("class")
+	codeStr := r.URL.Query().Get("status_code")
+	statusCode, _ := strconv.Atoi(codeStr)
+	onlyErrors := r.URL.Query().Get("only_errors") == "true"
+	search := r.URL.Query().Get("search")
+	limitStr := r.URL.Query().Get("limit")
+
+	limit := 100
+	if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 500 {
+		limit = l
+	}
+
+	reqs := s.syncer.GetNPMRequestEvents(r.Context(), period, host, class, statusCode, onlyErrors, search, limit)
+	s.writeJSON(w, http.StatusOK, map[string]interface{}{
+		"requests": reqs,
+		"count":    len(reqs),
 	})
 }
 

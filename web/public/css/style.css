@@ -3916,6 +3916,286 @@ svg.spin {
   animation: spin 1s linear infinite;
 }
 
+/* ==============================================================================
+   Request Logs & Error Inspector
+   ============================================================================== */
+.npm-requests-card {
+  padding: 1.35rem 1.5rem;
+  border-radius: var(--radius-lg);
+  margin-top: 0.5rem;
+}
+
+.npm-requests-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.25rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.15rem;
+}
+
+.npm-inspector-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.npm-inspector-title-row h3 {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.npm-counter-pill {
+  font-size: 0.74rem;
+  font-weight: 600;
+  padding: 0.15rem 0.6rem;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
+}
+
+.npm-inspector-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.npm-filter-pills {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(17, 24, 39, 0.6);
+  padding: 3px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  gap: 2px;
+}
+
+.npm-type-pill {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.3rem 0.65rem;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.npm-type-pill:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.npm-type-pill.active {
+  background: var(--accent-primary);
+  color: #ffffff;
+  box-shadow: 0 1px 4px rgba(59, 130, 246, 0.35);
+}
+
+.npm-type-pill.pill-errors.active {
+  background: #dc2626;
+  box-shadow: 0 1px 4px rgba(220, 38, 38, 0.4);
+}
+
+.npm-type-pill.pill-5xx.active {
+  background: #ef4444;
+  box-shadow: 0 1px 4px rgba(239, 68, 68, 0.4);
+}
+
+.npm-type-pill.pill-4xx.active {
+  background: #d97706;
+  box-shadow: 0 1px 4px rgba(217, 119, 6, 0.4);
+}
+
+.npm-requests-table-wrap {
+  max-height: 440px;
+  overflow-y: auto;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+}
+
+.npm-requests-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.npm-requests-table th {
+  position: sticky;
+  top: 0;
+  background: rgba(17, 24, 39, 0.95);
+  backdrop-filter: blur(8px);
+  z-index: 2;
+}
+
+.npm-requests-table tbody tr {
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.npm-requests-table tbody tr:hover {
+  background-color: rgba(255, 255, 255, 0.04);
+}
+
+.npm-requests-table tbody tr.row-is-error {
+  background-color: rgba(239, 68, 68, 0.04);
+}
+
+.npm-requests-table tbody tr.row-is-error:hover {
+  background-color: rgba(239, 68, 68, 0.09);
+}
+
+.req-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.18rem 0.55rem;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.req-status-2xx {
+  background: rgba(34, 197, 94, 0.14);
+  color: #4ade80;
+  border: 1px solid rgba(34, 197, 94, 0.35);
+}
+
+.req-status-3xx {
+  background: rgba(148, 163, 184, 0.14);
+  color: #cbd5e1;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+}
+
+.req-status-4xx {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.38);
+}
+
+.req-status-5xx {
+  background: rgba(239, 68, 68, 0.16);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.45);
+}
+
+.req-method-badge {
+  display: inline-block;
+  padding: 0.1rem 0.35rem;
+  border-radius: 3px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-secondary);
+  margin-right: 0.35rem;
+}
+
+.req-method-badge.method-GET { color: #60a5fa; background: rgba(59, 130, 246, 0.12); }
+.req-method-badge.method-POST { color: #34d399; background: rgba(16, 185, 129, 0.12); }
+.req-method-badge.method-PUT { color: #fbbf24; background: rgba(245, 158, 11, 0.12); }
+.req-method-badge.method-DELETE { color: #f87171; background: rgba(239, 68, 68, 0.12); }
+
+.req-error-text {
+  color: #f87171;
+  font-size: 0.78rem;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.req-success-text {
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+}
+
+/* Diagnostic Modal Content */
+.req-modal-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.req-modal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.req-modal-field label {
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.req-modal-field span {
+  font-size: 0.88rem;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  word-break: break-all;
+}
+
+.req-diagnostic-box {
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 1.15rem;
+  margin-top: 1rem;
+}
+
+.req-diagnostic-box.box-error {
+  border-color: rgba(239, 68, 68, 0.35);
+  background: rgba(239, 68, 68, 0.05);
+}
+
+.req-diagnostic-box.box-healthy {
+  border-color: rgba(34, 197, 94, 0.35);
+  background: rgba(34, 197, 94, 0.05);
+}
+
+.req-diagnostic-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.65rem;
+}
+
+.req-diagnostic-header h4 {
+  font-size: 0.88rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+.req-diagnostic-desc {
+  font-size: 0.84rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+}
+
+.req-troubleshoot-guide {
+  margin-top: 0.85rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.req-troubleshoot-guide strong {
+  color: #93c5fd;
+}
+
 /* Responsive Breakpoints for Metrics Tab */
 @media (max-width: 1024px) {
   .npm-kpi-grid,

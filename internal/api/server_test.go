@@ -435,6 +435,9 @@ func TestNPMMetricsOverviewAndProbeEndpoints(t *testing.T) {
 	if resp.Period != "24h" {
 		t.Errorf("expected period '24h', got '%s'", resp.Period)
 	}
+	if resp.RecentRequests == nil {
+		t.Errorf("expected non-nil RecentRequests in overview response")
+	}
 
 	// 2. Test POST /api/metrics/probe
 	probeReq := httptest.NewRequest(http.MethodPost, "/api/metrics/probe", nil)
@@ -451,5 +454,22 @@ func TestNPMMetricsOverviewAndProbeEndpoints(t *testing.T) {
 	}
 	if probeData["status"] != "ok" {
 		t.Errorf("expected status 'ok', got '%v'", probeData["status"])
+	}
+
+	// 3. Test GET /api/metrics/requests
+	reqsReq := httptest.NewRequest(http.MethodGet, "/api/metrics/requests?period=24h&limit=20", nil)
+	reqsRR := httptest.NewRecorder()
+	srv.handleMetricsRequests(reqsRR, reqsReq)
+
+	if reqsRR.Code != http.StatusOK {
+		t.Fatalf("expected HTTP 200 from /api/metrics/requests, got %d: %s", reqsRR.Code, reqsRR.Body.String())
+	}
+
+	var reqsData map[string]interface{}
+	if err := json.Unmarshal(reqsRR.Body.Bytes(), &reqsData); err != nil {
+		t.Fatalf("failed to decode requests response: %v", err)
+	}
+	if reqsData["requests"] == nil {
+		t.Errorf("expected 'requests' array in response")
 	}
 }

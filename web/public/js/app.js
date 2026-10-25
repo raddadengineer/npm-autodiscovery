@@ -3255,7 +3255,9 @@ let currentMetricsPeriod = '24h';
 let currentMetricsHost = 'all';
 let currentMetricsClassFilter = null; // '2xx' | '3xx' | '4xx' | '5xx' | null
 let currentMetricsCodeFilter = null;  // number (e.g. 502) | null
+let currentRequestFilterType = 'all'; // 'all' | 'errors' | '5xx' | '4xx'
 let latestNPMMetricsData = null;
+let latestRequestEvents = [];
 let isFetchingMetrics = false;
 
 function filterByStatusClass(cls) {
@@ -3341,6 +3343,24 @@ function initNPMMetricsTab() {
   const btnClearDrill = document.getElementById('btn-clear-drilldown');
   if (btnClearDrill) {
     btnClearDrill.addEventListener('click', clearStatusDrillDown);
+  }
+
+  // 6. Request search filter input
+  const reqSearchInput = document.getElementById('npm-requests-search');
+  if (reqSearchInput) {
+    reqSearchInput.addEventListener('input', () => {
+      renderNPMRequestsTable(latestRequestEvents);
+    });
+  }
+
+  // 7. Request detail modal backdrop close
+  const reqModal = document.getElementById('request-detail-modal');
+  if (reqModal) {
+    reqModal.addEventListener('click', (e) => {
+      if (e.target === reqModal) {
+        closeRequestDetailModal();
+      }
+    });
   }
 }
 
@@ -3851,6 +3871,10 @@ function renderNPMMetricsDashboard(data) {
 
   // 9. Hosts Metrics Table
   renderNPMHostsTable(data.hosts || []);
+
+  // 10. Request Logs & Error Diagnostics Table
+  latestRequestEvents = Array.isArray(data.recent_requests) ? data.recent_requests : [];
+  renderNPMRequestsTable(latestRequestEvents);
 }
 
 function renderNPMHostsTable(hosts) {
@@ -3986,7 +4010,367 @@ window.filterByStatusClass = filterByStatusClass;
 window.filterByStatusCode = filterByStatusCode;
 window.clearStatusDrillDown = clearStatusDrillDown;
 window.formatBytes = formatBytes;
+window.filterRequestEvents = filterRequestEvents;
+window.showRequestDetailModal = showRequestDetailModal;
+window.closeRequestDetailModal = closeRequestDetailModal;
 
+function filterRequestEvents(type) {
+  currentRequestFilterType = type || 'all';
+  document.querySelectorAll('#npm-request-type-pills .npm-type-pill').forEach(btn => {
+    if (btn.getAttribute('data-type') === currentRequestFilterType) {
+      btn.classList.add('active');
+    } else {
+      btn.classList.remove('active');
+    }
+  });
+  renderNPMRequestsTable(latestRequestEvents);
+}
 
+function renderNPMRequestsTable(events) {
+  const tbody = document.getElementById('npm-requests-table-tbody');
+  if (!tbody) return;
 
+  const searchInput = document.getElementById('npm-requests-search');
+  const term = (searchInput ? searchInput.value : '').toLowerCase().trim();
 
+  // Dynamic subtitle feedback based on active drill-down
+  const subtitleEl = document.getElementById('npm-requests-inspector-subtitle');
+  if (subtitleEl) {
+    if (currentMetricsCodeFilter) {
+      subtitleEl.innerHTML = `Showing requests matching HTTP ${currentMetricsCodeFilter}. <a href="javascript:void(0)" onclick="clearStatusDrillDown()" style="color:var(--accent-primary); text-decoration:underline; font-weight:600; margin-left:0.35rem;">Clear code filter</a>`;
+    } else if (currentMetricsClassFilter) {
+      const clsName = { '2xx': '2xx Success', '3xx': '3xx Redirect', '4xx': '4xx Client error', '5xx': '5xx Server error' }[currentMetricsClassFilter] || currentMetricsClassFilter;
+      subtitleEl.innerHTML = `Showing requests matching ${clsName}. <a href="javascript:void(0)" onclick="clearStatusDrillDown()" style="color:var(--accent-primary); text-decoration:underline; font-weight:600; margin-left:0.35rem;">Clear class filter</a>`;
+    } else if (currentMetricsHost && currentMetricsHost !== 'all') {
+      subtitleEl.innerHTML = `Showing requests for host <strong>${escapeHtml(currentMetricsHost)}</strong>. <a href="javascript:void(0)" onclick="toggleHostMetricsFilter('${escapeHtml(currentMetricsHost)}')" style="color:var(--accent-primary); text-decoration:underline; font-weight:600; margin-left:0.35rem;">Show all hosts</a>`;
+    } else {
+      subtitleEl.textContent = 'Inspect individual requests, status codes, and upstream error diagnostics across proxy hosts over time.';
+    }
+  }
+
+  const allEvents = Array.isArray(events) ? events : [];
+
+  const filtered = allEvents.filter(ev => {
+    // 1. Request type pills filter ('all', 'errors', '5xx', '4xx')
+    if (currentRequestFilterType === 'errors') {
+      if ((ev.status_code < 400) && !ev.error) return false;
+    } else if (currentRequestFilterType === '5xx') {
+      if (ev.status_code < 500 || ev.status_code >= 600) return false;
+    } else if (currentRequestFilterType === '4xx') {
+      if (ev.status_code < 400 || ev.status_code >= 500) return false;
+    }
+
+    // 2. Status code drill-down filter
+    if (currentMetricsCodeFilter) {
+      if (ev.status_code !== currentMetricsCodeFilter) return false;
+    }
+
+    // 3. Status class drill-down filter
+    if (currentMetricsClassFilter) {
+      const cls = Math.floor(ev.status_code / 100) + 'xx';
+      if (cls !== currentMetricsClassFilter) return false;
+    }
+
+    // 4. Host filter
+    if (currentMetricsHost && currentMetricsHost !== 'all') {
+      if (!ev.host || ev.host.toLowerCase() !== currentMetricsHost.toLowerCase()) return false;
+    }
+
+    // 5. Search query
+    if (term) {
+      const match = (ev.path && ev.path.toLowerCase().includes(term)) ||
+                    (ev.host && ev.host.toLowerCase().includes(term)) ||
+                    (ev.upstream && ev.upstream.toLowerCase().includes(term)) ||
+                    (ev.client_ip && ev.client_ip.toLowerCase().includes(term)) ||
+                    (ev.error && ev.error.toLowerCase().includes(term)) ||
+                    (ev.method && ev.method.toLowerCase().includes(term)) ||
+                    (String(ev.status_code).includes(term));
+      if (!match) return false;
+    }
+
+    return true;
+  });
+
+  // Update badge counter
+  const badge = document.getElementById('npm-requests-counter-badge');
+  if (badge) {
+    if (filtered.length !== allEvents.length) {
+      badge.textContent = `${filtered.length} of ${allEvents.length} requests`;
+    } else {
+      badge.textContent = `${allEvents.length} requests`;
+    }
+  }
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="8" style="text-align:center; padding: 2.5rem; color:var(--text-muted);">
+          No requests match the active filter.
+          <button type="button" class="btn-clear-drilldown" onclick="clearStatusDrillDown(); filterRequestEvents('all');" style="margin-left:0.75rem;">Reset filters</button>
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
+  let html = '';
+  filtered.forEach(ev => {
+    const cls = Math.floor(ev.status_code / 100) + 'xx';
+    const isError = ev.status_code >= 400 || !!ev.error;
+    const rowClass = isError ? 'npm-req-row-error' : '';
+
+    let timeFormatted = '';
+    try {
+      const d = new Date(ev.timestamp);
+      timeFormatted = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    } catch {
+      timeFormatted = ev.timestamp;
+    }
+
+    const methodUpper = (ev.method || 'GET').toUpperCase();
+
+    let errorDetailHtml = '';
+    if (ev.error) {
+      errorDetailHtml = `
+        <div class="npm-req-error-pill" title="${escapeHtml(ev.error)}">
+          <span class="npm-error-icon">⚠</span>
+          <span class="npm-error-msg">${escapeHtml(ev.error)}</span>
+        </div>
+      `;
+    } else {
+      errorDetailHtml = `<span style="color:var(--text-muted); font-size:0.78rem;">—</span>`;
+    }
+
+    const latencyColor = ev.latency_ms > 200 ? 'var(--accent-amber)' : (ev.latency_ms > 500 ? 'var(--accent-rose)' : 'inherit');
+
+    html += `
+      <tr class="${rowClass}">
+        <td>
+          <span style="font-family:var(--font-mono); font-size:0.78rem; color:var(--text-secondary);" title="${escapeHtml(ev.timestamp)}">${escapeHtml(timeFormatted)}</span>
+        </td>
+        <td>
+          <span class="npm-feature-pill pill-${cls}" style="font-weight:700; cursor:pointer;" onclick="filterByStatusCode(${ev.status_code}, '${cls}')" title="Filter by HTTP ${ev.status_code}">
+            ${ev.status_code}
+          </span>
+        </td>
+        <td>
+          <div style="display:flex; align-items:center; gap:0.4rem;">
+            <span class="npm-method-badge method-${methodUpper.toLowerCase()}">${methodUpper}</span>
+            <span class="npm-req-path" title="${escapeHtml(ev.path)}">${escapeHtml(ev.path)}</span>
+          </div>
+        </td>
+        <td>
+          <div>
+            <strong style="color:var(--text-primary); font-size:0.82rem; cursor:pointer;" onclick="toggleHostMetricsFilter('${escapeHtml(ev.host)}')" title="Filter by host ${escapeHtml(ev.host)}">${escapeHtml(ev.host)}</strong>
+            <div style="font-size:0.72rem; color:var(--text-muted); font-family:var(--font-mono);">${escapeHtml(ev.upstream || '—')}</div>
+          </div>
+        </td>
+        <td>
+          <span style="font-family:var(--font-mono); font-size:0.78rem; color:var(--text-secondary);">${escapeHtml(ev.client_ip || '—')}</span>
+        </td>
+        <td style="text-align:right; font-family:var(--font-mono); font-size:0.82rem; color:${latencyColor};">
+          ${ev.latency_ms || 0} ms
+        </td>
+        <td>
+          ${errorDetailHtml}
+        </td>
+        <td style="text-align:center;">
+          <button type="button" class="btn btn-sm btn-outline-secondary" onclick="showRequestDetailModal('${escapeHtml(ev.id)}')" title="Inspect request diagnostics" style="padding:0.2rem 0.5rem; font-size:0.75rem;">
+            Inspect
+          </button>
+        </td>
+      </tr>
+    `;
+  });
+
+  tbody.innerHTML = html;
+}
+
+function showRequestDetailModal(id) {
+  const modal = document.getElementById('request-detail-modal');
+  if (!modal) return;
+
+  const ev = (latestRequestEvents || []).find(r => r.id === id);
+  if (!ev) {
+    showToast('Request record not found in active session cache', 'warning');
+    return;
+  }
+
+  const badge = document.getElementById('req-modal-status-badge');
+  if (badge) {
+    const cls = Math.floor(ev.status_code / 100) + 'xx';
+    badge.className = `npm-feature-pill pill-${cls}`;
+    badge.textContent = `${ev.status_code} ${ev.status_text || ''}`;
+  }
+
+  const body = document.getElementById('req-modal-body');
+  if (!body) return;
+
+  let timeStr = ev.timestamp;
+  try {
+    timeStr = new Date(ev.timestamp).toLocaleString();
+  } catch {}
+
+  let adviceHtml = '';
+  if (ev.status_code === 502) {
+    adviceHtml = `
+      <div class="npm-diagnostic-advice-box advice-error">
+        <div class="advice-header">
+          <span class="advice-icon">⚠️</span>
+          <strong>Root Cause: 502 Bad Gateway (Upstream Unreachable)</strong>
+        </div>
+        <p>Nginx Proxy Manager attempted to proxy the request to <code>${escapeHtml(ev.upstream || 'upstream')}</code>, but the destination port was not listening, actively refused the TCP socket connection, or crashed during connection setup.</p>
+        <ul class="advice-list">
+          <li><strong>Verify container state:</strong> Ensure the upstream service container is running and healthy on the target host.</li>
+          <li><strong>Verify bridge network:</strong> If NPM and the backend container are on Docker, verify both are attached to the same network (e.g. <code>npm-network</code> or <code>bridge</code>).</li>
+          <li><strong>Verify container port:</strong> Check if the application is listening on <code>0.0.0.0</code> rather than <code>127.0.0.1</code> inside the container.</li>
+        </ul>
+      </div>
+    `;
+  } else if (ev.status_code === 504) {
+    adviceHtml = `
+      <div class="npm-diagnostic-advice-box advice-error">
+        <div class="advice-header">
+          <span class="advice-icon">⏱️</span>
+          <strong>Root Cause: 504 Gateway Timeout (Upstream Response Delayed)</strong>
+        </div>
+        <p>The upstream target <code>${escapeHtml(ev.upstream || 'upstream')}</code> accepted the TCP handshake but did not send a response within the proxy timeout window (${ev.latency_ms} ms elapsed).</p>
+        <ul class="advice-list">
+          <li>Check for high backend CPU/memory utilization or stuck database queries.</li>
+          <li>For long-running AI streaming or large file uploads, configure custom Nginx <code>proxy_read_timeout 300s;</code> in NPM Advanced tab.</li>
+        </ul>
+      </div>
+    `;
+  } else if (ev.status_code === 503) {
+    adviceHtml = `
+      <div class="npm-diagnostic-advice-box advice-warn">
+        <div class="advice-header">
+          <span class="advice-icon">⏸️</span>
+          <strong>Root Cause: 503 Service Unavailable</strong>
+        </div>
+        <p>The NPM proxy host is currently marked disabled or all upstream nodes in the pool are marked down.</p>
+        <ul class="advice-list">
+          <li>Enable the proxy host in Nginx Proxy Manager dashboard or verify worker node health.</li>
+        </ul>
+      </div>
+    `;
+  } else if (ev.status_code === 404) {
+    adviceHtml = `
+      <div class="npm-diagnostic-advice-box advice-warn">
+        <div class="advice-header">
+          <span class="advice-icon">🔍</span>
+          <strong>Root Cause: 404 Route Not Found</strong>
+        </div>
+        <p>Path <code>${escapeHtml(ev.path)}</code> does not match any registered endpoint on <code>${escapeHtml(ev.host)}</code>.</p>
+        <ul class="advice-list">
+          <li>Check application routing or base-path configurations.</li>
+          <li>If this is a Single-Page Application (SPA), ensure NPM or upstream is configured with <code>try_files $uri /index.html;</code>.</li>
+        </ul>
+      </div>
+    `;
+  } else if (ev.status_code === 403) {
+    adviceHtml = `
+      <div class="npm-diagnostic-advice-box advice-warn">
+        <div class="advice-header">
+          <span class="advice-icon">🔒</span>
+          <strong>Root Cause: 403 Access Forbidden</strong>
+        </div>
+        <p>The client IP <code>${escapeHtml(ev.client_ip)}</code> was rejected by upstream authorization or an NPM Access List.</p>
+      </div>
+    `;
+  } else if (ev.status_code >= 200 && ev.status_code < 300) {
+    adviceHtml = `
+      <div class="npm-diagnostic-advice-box advice-success">
+        <div class="advice-header">
+          <span class="advice-icon">✅</span>
+          <strong>Request Succeeded (HTTP 200 OK)</strong>
+        </div>
+        <p>Proxied successfully to upstream <code>${escapeHtml(ev.upstream || 'backend')}</code> in ${ev.latency_ms} ms with no errors.</p>
+      </div>
+    `;
+  } else {
+    adviceHtml = `
+      <div class="npm-diagnostic-advice-box advice-info">
+        <div class="advice-header">
+          <span class="advice-icon">ℹ️</span>
+          <strong>HTTP ${ev.status_code} Response</strong>
+        </div>
+        <p>${escapeHtml(ev.error || ev.status_text || 'Completed request')}</p>
+      </div>
+    `;
+  }
+
+  body.innerHTML = `
+    <!-- Top Metadata Grid -->
+    <div class="req-diag-grid">
+      <div class="req-diag-item">
+        <span class="req-diag-label">Timestamp</span>
+        <span class="req-diag-val">${escapeHtml(timeStr)}</span>
+      </div>
+      <div class="req-diag-item">
+        <span class="req-diag-label">Request ID</span>
+        <span class="req-diag-val mono">${escapeHtml(ev.id)}</span>
+      </div>
+      <div class="req-diag-item">
+        <span class="req-diag-label">HTTP Method & Path</span>
+        <span class="req-diag-val mono"><span class="npm-method-badge method-${(ev.method||'GET').toLowerCase()}">${escapeHtml(ev.method||'GET')}</span> ${escapeHtml(ev.path)}</span>
+      </div>
+      <div class="req-diag-item">
+        <span class="req-diag-label">Target Domain</span>
+        <span class="req-diag-val">${escapeHtml(ev.host)}</span>
+      </div>
+      <div class="req-diag-item">
+        <span class="req-diag-label">Upstream Proxy Destination</span>
+        <span class="req-diag-val mono">${escapeHtml(ev.upstream || '—')}</span>
+      </div>
+      <div class="req-diag-item">
+        <span class="req-diag-label">Client IP Address</span>
+        <span class="req-diag-val mono">${escapeHtml(ev.client_ip || '—')}</span>
+      </div>
+      <div class="req-diag-item">
+        <span class="req-diag-label">Round-Trip Latency</span>
+        <span class="req-diag-val">${ev.latency_ms} ms</span>
+      </div>
+      <div class="req-diag-item">
+        <span class="req-diag-label">Response Payload Size</span>
+        <span class="req-diag-val">${formatBytes(ev.bytes_sent || 0)}</span>
+      </div>
+    </div>
+
+    ${ev.error ? `
+      <div class="npm-diag-error-highlight">
+        <div style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em; color:#ef4444; font-weight:700; margin-bottom:0.25rem;">
+          Recorded Error Diagnostic Message
+        </div>
+        <div style="font-family:var(--font-mono); font-size:0.85rem; color:#fca5a5; word-break:break-all;">
+          ${escapeHtml(ev.error)}
+        </div>
+      </div>
+    ` : ''}
+
+    ${adviceHtml}
+
+    <div style="margin-top: 1.25rem;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.4rem;">
+        <span style="font-size:0.78rem; font-weight:600; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.04em;">Full Diagnostic Event JSON</span>
+        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="navigator.clipboard.writeText(JSON.stringify(latestRequestEvents.find(r => r.id === '${escapeHtml(ev.id)}'), null, 2)); showToast('Copied JSON record to clipboard', 'info');" style="padding:0.2rem 0.6rem; font-size:0.75rem;">
+          Copy JSON
+        </button>
+      </div>
+      <pre class="req-diag-raw-json">${escapeHtml(JSON.stringify(ev, null, 2))}</pre>
+    </div>
+  `;
+
+  modal.style.display = 'flex';
+}
+
+function closeRequestDetailModal() {
+  const modal = document.getElementById('request-detail-modal');
+  if (modal) modal.style.display = 'none';
+}
+
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    closeRequestDetailModal();
+  }
+});
