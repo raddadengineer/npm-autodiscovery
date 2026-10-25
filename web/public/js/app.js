@@ -15,6 +15,7 @@ let autoScrollLogs = true;
 const TAB_ROUTES = {
   'proxies-view': '/proxies',
   'streams-view': '/streams',
+  'metrics-view': '/analytics',
   'events-view': '/events',
   'containers-view': '/containers',
   'cluster-view': '/cluster',
@@ -25,6 +26,8 @@ const ROUTE_TABS = {
   '/': 'proxies-view',
   '/proxies': 'proxies-view',
   '/streams': 'streams-view',
+  '/analytics': 'metrics-view',
+  '/metrics-tab': 'metrics-view',
   '/events': 'events-view',
   '/logs': 'events-view',
   '/audit': 'events-view',
@@ -36,6 +39,7 @@ const ROUTE_TABS = {
 const TAB_TITLES = {
   'proxies-view': 'Active Proxies | NPM Auto-Discovery',
   'streams-view': 'L4 Streams | NPM Auto-Discovery',
+  'metrics-view': 'Metrics & Analytics | NPM Auto-Discovery',
   'events-view': 'Audit Log | NPM Auto-Discovery',
   'containers-view': 'All Containers | NPM Auto-Discovery',
   'cluster-view': 'Cluster Nodes | NPM Auto-Discovery',
@@ -47,6 +51,7 @@ function getTabFromUrl() {
   const hash = window.location.hash.replace(/^#\/?/, '').trim();
   if (hash) {
     const hashClean = '/' + hash.replace(/\/+$/, '');
+    if (hashClean === '/metrics') return { tab: 'metrics-view', subtab: null };
     if (ROUTE_TABS[hashClean]) return { tab: ROUTE_TABS[hashClean], subtab: null };
     if (hashClean.startsWith('/docs')) {
       const parts = hashClean.split('/');
@@ -112,6 +117,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initDocsSearch();
   initAddNodeGenerator();
   initProxmoxModal();
+  initNPMMetricsTab();
   loadInitialData();
 
   // Periodic polling for status and tables every 5 seconds as fallback
@@ -120,6 +126,9 @@ document.addEventListener('DOMContentLoaded', () => {
   setInterval(fetchStreams, 6000);
   setInterval(fetchContainers, 10000);
   setInterval(fetchClusterNodes, 8000);
+  setInterval(() => {
+    fetchNPMMetrics(false);
+  }, 10000);
 });
 
 // Tab navigation handler
@@ -128,6 +137,25 @@ function initTabs() {
     btn.addEventListener('click', () => {
       const targetTab = btn.getAttribute('data-tab');
       switchTab(targetTab, true);
+    });
+  });
+
+  // Make top overview cards clickable to switch into their respective areas
+  document.querySelectorAll('.metric-card[data-target-tab]').forEach(card => {
+    card.addEventListener('click', () => {
+      const targetTab = card.getAttribute('data-target-tab');
+      if (targetTab) {
+        switchTab(targetTab, true);
+      }
+    });
+    card.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        const targetTab = card.getAttribute('data-target-tab');
+        if (targetTab) {
+          switchTab(targetTab, true);
+        }
+      }
     });
   });
 }
@@ -158,6 +186,8 @@ function switchTab(tabId, updateUrl = true) {
     fetchContainers();
   } else if (tabId === 'streams-view') {
     fetchStreams();
+  } else if (tabId === 'metrics-view') {
+    fetchNPMMetrics(false);
   } else if (tabId === 'cluster-view') {
     fetchClusterNodes();
   } else if (tabId === 'proxies-view') {
@@ -874,6 +904,7 @@ async function loadInitialData() {
   await fetchStreams();
   await fetchContainers();
   await fetchClusterNodes();
+  await fetchNPMMetrics(false);
 }
 
 // Fetch System Status & Metrics
@@ -3216,6 +3247,524 @@ function initProxmoxModal() {
     });
   }
 }
+
+// ==============================================================================
+// NPM Metrics, Traffic & Response Time Observability Engine
+// ==============================================================================
+let currentMetricsPeriod = '24h';
+let currentMetricsHost = 'all';
+let latestNPMMetricsData = null;
+let isFetchingMetrics = false;
+
+function formatBytes(bytes) {
+  if (!bytes || bytes <= 0 || isNaN(bytes)) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(i > 0 ? 1 : 0)) + ' ' + sizes[i];
+}
+
+function initNPMMetricsTab() {
+  // 1. Period segmented button pills (24h, 7d, 30d)
+  document.querySelectorAll('.npm-period-pill').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const period = btn.getAttribute('data-period');
+      if (!period || period === currentMetricsPeriod) return;
+      document.querySelectorAll('.npm-period-pill').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentMetricsPeriod = period;
+      fetchNPMMetrics(false);
+    });
+  });
+
+  // 2. Host dropdown filter
+  const hostSelect = document.getElementById('npm-metrics-host-filter');
+  if (hostSelect) {
+    hostSelect.addEventListener('change', () => {
+      currentMetricsHost = hostSelect.value || 'all';
+      fetchNPMMetrics(false);
+    });
+  }
+
+  // 3. Manual probe button
+  const btnProbe = document.getElementById('btn-probe-npm-metrics');
+  if (btnProbe) {
+    btnProbe.addEventListener('click', probeNPMMetricsNow);
+  }
+
+  // 4. Live filter search in the hosts metrics table
+  const searchInput = document.getElementById('npm-metrics-hosts-search');
+  if (searchInput) {
+    searchInput.addEventListener('input', () => {
+      if (latestNPMMetricsData && Array.isArray(latestNPMMetricsData.hosts)) {
+        renderNPMHostsTable(latestNPMMetricsData.hosts);
+      }
+    });
+  }
+}
+
+async function probeNPMMetricsNow() {
+  const btn = document.getElementById('btn-probe-npm-metrics');
+  const originalHTML = btn ? btn.innerHTML : '';
+  if (btn) {
+    btn.disabled = true;
+    btn.classList.add('spinning');
+    btn.innerHTML = `
+      <svg class="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10" stroke-opacity="0.25"></circle>
+        <path d="M12 2a10 10 0 0 1 10 10"></path>
+      </svg>
+      <span>Probing...</span>
+    `;
+  }
+
+  try {
+    const res = await fetch('/api/metrics/probe', { method: 'POST' });
+    if (!res.ok) {
+      throw new Error(`Server responded with ${res.status}`);
+    }
+    const data = await res.json();
+    showToast(data.message || 'Probed NPM proxy hosts successfully', 'success');
+    await fetchNPMMetrics(true);
+  } catch (err) {
+    console.error('NPM metrics probe failed:', err);
+    showToast(`Probe failed: ${err.message}`, 'error');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.classList.remove('spinning');
+      btn.innerHTML = originalHTML;
+    }
+  }
+}
+
+async function fetchNPMMetrics(forceProbe = false) {
+  if (isFetchingMetrics) return;
+  isFetchingMetrics = true;
+
+  try {
+    const query = new URLSearchParams({
+      period: currentMetricsPeriod,
+      host: currentMetricsHost
+    });
+    if (forceProbe) {
+      query.set('probe', 'true');
+    }
+
+    const res = await fetch(`/api/metrics/overview?${query.toString()}`);
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
+    }
+
+    const data = await res.json();
+    latestNPMMetricsData = data;
+    renderNPMMetricsDashboard(data);
+  } catch (err) {
+    console.error('Failed to fetch NPM metrics dashboard data:', err);
+    if (activeTab === 'metrics-view') {
+      const srcText = document.getElementById('npm-metrics-source-text');
+      if (srcText) srcText.textContent = 'Telemetry Offline';
+    }
+  } finally {
+    isFetchingMetrics = false;
+  }
+}
+
+function renderNPMMetricsDashboard(data) {
+  if (!data) return;
+
+  // 1. Data Source & Telemetry Badge
+  const srcText = document.getElementById('npm-metrics-source-text');
+  if (srcText && data.data_source) {
+    srcText.textContent = data.data_source;
+  }
+
+  // 2. Available Hosts Dropdown
+  const hostSelect = document.getElementById('npm-metrics-host-filter');
+  if (hostSelect && Array.isArray(data.available_hosts)) {
+    const currentVal = currentMetricsHost;
+    let html = '<option value="all">All hosts</option>';
+    data.available_hosts.forEach(h => {
+      const isSel = (h === currentVal) ? 'selected' : '';
+      html += `<option value="${escapeHtml(h)}" ${isSel}>${escapeHtml(h)}</option>`;
+    });
+    hostSelect.innerHTML = html;
+    if (currentVal && (currentVal === 'all' || data.available_hosts.includes(currentVal))) {
+      hostSelect.value = currentVal;
+    } else {
+      hostSelect.value = 'all';
+      currentMetricsHost = 'all';
+    }
+  }
+
+  // 3. Summary KPI Cards
+  const sum = data.summary || {};
+  const elReq = document.getElementById('npm-kpi-requests');
+  if (elReq) elReq.textContent = (sum.total_requests || 0).toLocaleString();
+  const elReqSub = document.getElementById('npm-kpi-requests-sub');
+  if (elReqSub) elReqSub.textContent = `${sum.active_hosts || 0} active NPM hosts`;
+
+  const elTraffic = document.getElementById('npm-kpi-traffic');
+  if (elTraffic) elTraffic.textContent = formatBytes(sum.total_traffic_bytes || 0);
+  const elTrafficSub = document.getElementById('npm-kpi-traffic-sub');
+  if (elTrafficSub) elTrafficSub.textContent = `${sum.ssl_hosts || 0} SSL/TLS hosts enabled`;
+
+  const elErrPct = document.getElementById('npm-kpi-errors-pct');
+  if (elErrPct) elErrPct.textContent = `${(sum.server_error_rate_pct || 0).toFixed(1)} %`;
+  const elErrSub = document.getElementById('npm-kpi-errors-sub');
+  if (elErrSub) elErrSub.textContent = `${(sum.server_errors_5xx || 0).toLocaleString()} requests`;
+
+  const elLat = document.getElementById('npm-kpi-latency');
+  if (elLat) elLat.textContent = `${sum.avg_response_time_ms || 0} ms`;
+  const elLatSub = document.getElementById('npm-kpi-latency-sub');
+  if (elLatSub) elLatSub.textContent = `max. ${sum.max_response_time_ms || 0} ms`;
+
+  // Update Top Dashboard Overview Metrics Cards
+  const elOverviewReq = document.getElementById('overview-metrics-requests');
+  if (elOverviewReq) elOverviewReq.textContent = (sum.total_requests || 0).toLocaleString();
+
+  const elOverviewTraffic = document.getElementById('overview-metrics-traffic');
+  if (elOverviewTraffic) elOverviewTraffic.textContent = formatBytes(sum.total_traffic_bytes || 0);
+
+  const elOverviewLat = document.getElementById('overview-metrics-latency');
+  if (elOverviewLat) elOverviewLat.textContent = `${sum.avg_response_time_ms || 0} ms`;
+
+  const elOverviewErrRate = document.getElementById('overview-metrics-error-rate');
+  if (elOverviewErrRate) elOverviewErrRate.textContent = `${(sum.server_error_rate_pct || 0).toFixed(1)}%`;
+
+  // 4. NPM Configuration & Security Posture Strip
+  const post = data.npm_posture || {};
+  const postHosts = document.getElementById('npm-posture-hosts');
+  if (postHosts) postHosts.textContent = `${post.auto_discovered_hosts || 0} Auto · ${post.manual_hosts || 0} Manual`;
+
+  const postOnline = document.getElementById('npm-posture-online');
+  if (postOnline) postOnline.textContent = `${sum.online_hosts || 0} Online · ${sum.offline_hosts || 0} Offline`;
+
+  const postSsl = document.getElementById('npm-posture-ssl');
+  if (postSsl) postSsl.textContent = `${post.ssl_enabled_count || 0} SSL · ${post.ssl_forced_count || 0} Forced`;
+
+  const postSec = document.getElementById('npm-posture-security');
+  if (postSec) postSec.textContent = `${post.http2_count || 0} HTTP/2 · ${post.block_exploits_count || 0} Block Exploits`;
+
+  const postCerts = document.getElementById('npm-posture-certs');
+  if (postCerts) {
+    const exp = sum.expiring_certificates || 0;
+    postCerts.textContent = `${sum.total_certificates || 0} Active${exp > 0 ? ` · ${exp} Expiring` : ''}`;
+  }
+
+  // 5. Main Bar Chart (Requests per hour/day)
+  const chartTitle = document.getElementById('npm-requests-chart-title');
+  const chartSub = document.getElementById('npm-requests-chart-subtitle');
+  if (chartTitle) {
+    chartTitle.textContent = currentMetricsPeriod === '24h' ? 'Requests per hour' : 'Requests per day';
+  }
+  if (chartSub) {
+    const subMap = { '24h': 'Last 24 hours', '7d': 'Last 7 days', '30d': 'Last 30 days' };
+    chartSub.textContent = subMap[currentMetricsPeriod] || 'Selected period';
+  }
+
+  const timeline = Array.isArray(data.timeline) ? data.timeline : [];
+  let maxReq = 0;
+  timeline.forEach(slot => {
+    if (slot.requests > maxReq) maxReq = slot.requests;
+  });
+
+  // Y-Axis labels
+  const yAxis = document.getElementById('npm-requests-y-axis');
+  if (yAxis) {
+    const topY = maxReq > 0 ? maxReq : 10;
+    const midY = Math.round(topY / 2);
+    yAxis.innerHTML = `
+      <span>${topY >= 1000 ? (topY / 1000).toFixed(1) + 'k' : topY}</span>
+      <span>${midY >= 1000 ? (midY / 1000).toFixed(1) + 'k' : midY}</span>
+      <span>0</span>
+    `;
+  }
+
+  // Bars Stage
+  const barsStage = document.getElementById('npm-requests-bar-chart');
+  if (barsStage) {
+    if (timeline.length === 0) {
+      barsStage.innerHTML = '<div style="width:100%; text-align:center; color:var(--text-muted); font-size:0.85rem; padding-top:60px;">No requests recorded in this period</div>';
+    } else {
+      let barsHtml = '';
+      timeline.forEach(slot => {
+        const req = slot.requests || 0;
+        const pct = maxReq > 0 ? Math.max(3, Math.round((req / maxReq) * 100)) : 3;
+        const tip = `${slot.full_label || slot.label}: ${req.toLocaleString()} reqs (${formatBytes(slot.traffic_bytes || 0)}) · ${slot.avg_time_ms || 0}ms avg`;
+        barsHtml += `
+          <div class="npm-bar-col" title="${escapeHtml(tip)}">
+            <div class="npm-bar-fill" style="height: ${pct}%;"></div>
+          </div>
+        `;
+      });
+      barsStage.innerHTML = barsHtml;
+    }
+  }
+
+  // X-Axis tick labels
+  const xAxis = document.getElementById('npm-requests-x-axis');
+  if (xAxis) {
+    let xHtml = '';
+    const totalSlots = timeline.length;
+    let step = 1;
+    if (totalSlots > 20) step = 3;
+    else if (totalSlots > 10) step = 2;
+
+    timeline.forEach((slot, i) => {
+      const showLabel = (i % step === 0) || (i === totalSlots - 1);
+      const text = showLabel ? (slot.label || '') : '';
+      xHtml += `<div class="npm-x-tick" title="${escapeHtml(slot.full_label || slot.label)}">${escapeHtml(text)}</div>`;
+    });
+    xAxis.innerHTML = xHtml;
+  }
+
+  // Timeline Table ("As table" disclosure)
+  const timeTbody = document.getElementById('npm-timeline-table-tbody');
+  if (timeTbody) {
+    let tHtml = '';
+    timeline.forEach(slot => {
+      tHtml += `
+        <tr>
+          <td><strong>${escapeHtml(slot.full_label || slot.label)}</strong></td>
+          <td style="text-align:right; font-family:var(--font-mono);">${(slot.requests || 0).toLocaleString()}</td>
+          <td style="text-align:right; font-family:var(--font-mono);">${formatBytes(slot.traffic_bytes || 0)}</td>
+          <td style="text-align:right; font-family:var(--font-mono); color:#22c55e;">${(slot.status_2xx || 0).toLocaleString()}</td>
+          <td style="text-align:right; font-family:var(--font-mono); color:#94a3b8;">${(slot.status_3xx || 0).toLocaleString()}</td>
+          <td style="text-align:right; font-family:var(--font-mono); color:#f59e0b;">${(slot.status_4xx || 0).toLocaleString()}</td>
+          <td style="text-align:right; font-family:var(--font-mono); color:#ef4444;">${(slot.status_5xx || 0).toLocaleString()}</td>
+          <td style="text-align:right; font-family:var(--font-mono);">${slot.avg_time_ms || 0} ms</td>
+        </tr>
+      `;
+    });
+    timeTbody.innerHTML = tHtml || '<tr><td colspan="8" style="text-align:center; color:var(--text-muted);">No timeline data</td></tr>';
+  }
+
+  // 6. Status Codes Section & Stacked Distribution Bar
+  const classes = data.status_classes || {};
+  const c2xx = classes['2xx'] || { count: 0, percent: 0, peak: 0, series: [] };
+  const c3xx = classes['3xx'] || { count: 0, percent: 0, peak: 0, series: [] };
+  const c4xx = classes['4xx'] || { count: 0, percent: 0, peak: 0, series: [] };
+  const c5xx = classes['5xx'] || { count: 0, percent: 0, peak: 0, series: [] };
+
+  const stackedBar = document.getElementById('npm-status-stacked-bar');
+  if (stackedBar) {
+    stackedBar.innerHTML = `
+      <div class="npm-stacked-seg seg-2xx" style="width: ${c2xx.percent}%;" title="2xx: ${c2xx.percent}%"></div>
+      <div class="npm-stacked-seg seg-3xx" style="width: ${c3xx.percent}%;" title="3xx: ${c3xx.percent}%"></div>
+      <div class="npm-stacked-seg seg-4xx" style="width: ${c4xx.percent}%;" title="4xx: ${c4xx.percent}%"></div>
+      <div class="npm-stacked-seg seg-5xx" style="width: ${c5xx.percent}%;" title="5xx: ${c5xx.percent}%"></div>
+    `;
+  }
+
+  const leg2 = document.getElementById('npm-legend-2xx');
+  if (leg2) leg2.textContent = `${c2xx.count.toLocaleString()} · ${c2xx.percent}%`;
+  const leg3 = document.getElementById('npm-legend-3xx');
+  if (leg3) leg3.textContent = `${c3xx.count.toLocaleString()} · ${c3xx.percent}%`;
+  const leg4 = document.getElementById('npm-legend-4xx');
+  if (leg4) leg4.textContent = `${c4xx.count.toLocaleString()} · ${c4xx.percent}%`;
+  const leg5 = document.getElementById('npm-legend-5xx');
+  if (leg5) leg5.textContent = `${c5xx.count.toLocaleString()} · ${c5xx.percent}%`;
+
+  // 7. Status Class Cards (4 cards with sparklines)
+  const classGrid = document.getElementById('npm-class-cards-grid');
+  if (classGrid) {
+    const classConfigs = [
+      { key: '2xx', title: '2xx · Success', icon: '✓', cls: '2xx', data: c2xx },
+      { key: '3xx', title: '3xx · Redirect', icon: '↗', cls: '3xx', data: c3xx },
+      { key: '4xx', title: '4xx · Client error', icon: '⚠', cls: '4xx', data: c4xx },
+      { key: '5xx', title: '5xx · Server error', icon: '⊗', cls: '5xx', data: c5xx }
+    ];
+
+    let cHtml = '';
+    classConfigs.forEach(cfg => {
+      const cd = cfg.data;
+      const peak = cd.peak || 0;
+      const series = Array.isArray(cd.series) ? cd.series : [];
+      let sparkHtml = '';
+      series.forEach(val => {
+        const hPct = peak > 0 ? Math.max(4, Math.round((val / peak) * 100)) : 4;
+        sparkHtml += `<div class="npm-spark-bar bar-${cfg.cls}" style="height:${hPct}%;" title="${val.toLocaleString()}"></div>`;
+      });
+
+      cHtml += `
+        <div class="npm-class-card glass-panel">
+          <div class="npm-class-card-top">
+            <span class="npm-class-card-title">
+              <span class="npm-cls-icon cls-${cfg.cls}">${cfg.icon}</span>
+              ${cfg.title}
+            </span>
+            <span class="npm-class-card-peak">Peak ${peak.toLocaleString()}</span>
+          </div>
+          <div class="npm-class-card-count">${(cd.count || 0).toLocaleString()}</div>
+          <div class="npm-sparkline-bars">
+            ${sparkHtml || '<div class="npm-spark-bar bar-' + cfg.cls + '" style="height:4%;"></div>'}
+          </div>
+        </div>
+      `;
+    });
+    classGrid.innerHTML = cHtml;
+  }
+
+  // 8. Individual Status Code Cards & Table
+  const codesGrid = document.getElementById('npm-status-codes-grid');
+  const statusCodes = Array.isArray(data.status_codes) ? data.status_codes : [];
+  if (codesGrid) {
+    if (statusCodes.length === 0) {
+      codesGrid.innerHTML = '<div style="grid-column: 1 / -1; padding: 1.5rem; text-align: center; color: var(--text-muted);">No HTTP status codes recorded in this time range</div>';
+    } else {
+      let sHtml = '';
+      statusCodes.forEach(item => {
+        const peak = item.peak || 0;
+        const series = Array.isArray(item.series) ? item.series : [];
+        let sparkHtml = '';
+        series.forEach(val => {
+          const hPct = peak > 0 ? Math.max(4, Math.round((val / peak) * 100)) : 4;
+          sparkHtml += `<div class="npm-spark-bar bar-${item.class}" style="height:${hPct}%;" title="${val.toLocaleString()}"></div>`;
+        });
+
+        sHtml += `
+          <div class="npm-code-card">
+            <div class="npm-code-card-top">
+              <span class="npm-code-num">${item.code}</span>
+              <span class="npm-code-pct">${item.percent}%</span>
+            </div>
+            <div class="npm-code-desc">${escapeHtml(item.title)}</div>
+            <div class="npm-sparkline-bars">
+              ${sparkHtml || '<div class="npm-spark-bar bar-' + item.class + '" style="height:4%;"></div>'}
+            </div>
+            <div class="npm-code-total">${item.count.toLocaleString()} requests</div>
+          </div>
+        `;
+      });
+      codesGrid.innerHTML = sHtml;
+    }
+  }
+
+  const codesTbody = document.getElementById('npm-status-codes-table-tbody');
+  if (codesTbody) {
+    let ctHtml = '';
+    statusCodes.forEach(item => {
+      ctHtml += `
+        <tr>
+          <td><strong style="font-family:var(--font-mono);">${item.code}</strong></td>
+          <td><span class="npm-feature-pill pill-${item.class}">${item.class}</span></td>
+          <td>${escapeHtml(item.title)}</td>
+          <td style="text-align:right; font-family:var(--font-mono);">${item.count.toLocaleString()}</td>
+          <td style="text-align:right; font-family:var(--font-mono);">${item.percent}%</td>
+          <td style="text-align:right; font-family:var(--font-mono);">${(item.peak || 0).toLocaleString()}</td>
+        </tr>
+      `;
+    });
+    codesTbody.innerHTML = ctHtml || '<tr><td colspan="6" style="text-align:center; color:var(--text-muted);">No status code records</td></tr>';
+  }
+
+  // 9. Hosts Metrics Table
+  renderNPMHostsTable(data.hosts || []);
+}
+
+function renderNPMHostsTable(hosts) {
+  const tbody = document.getElementById('npm-metrics-hosts-tbody');
+  if (!tbody) return;
+
+  const searchInput = document.getElementById('npm-metrics-hosts-search');
+  const term = (searchInput ? searchInput.value : '').toLowerCase().trim();
+
+  const filtered = hosts.filter(h => {
+    if (!term) return true;
+    return (h.domain && h.domain.toLowerCase().includes(term)) ||
+           (h.target && h.target.toLowerCase().includes(term)) ||
+           (h.node_id && h.node_id.toLowerCase().includes(term)) ||
+           (h.source && h.source.toLowerCase().includes(term));
+  });
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="7" style="text-align:center; padding: 2rem; color:var(--text-muted);">
+          No hosts match the search criteria
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
+  let html = '';
+  filtered.forEach(h => {
+    const isSelected = (currentMetricsHost && currentMetricsHost.toLowerCase() === h.domain.toLowerCase());
+    const selClass = isSelected ? 'selected-host-row' : '';
+
+    let featurePills = '';
+    if (h.ssl_enabled) featurePills += '<span class="npm-feature-pill pill-ssl" title="SSL/TLS Enabled">SSL</span>';
+    if (h.ssl_forced) featurePills += '<span class="npm-feature-pill pill-ssl" title="HTTP to HTTPS Redirect">Force SSL</span>';
+    if (h.http2_support) featurePills += '<span class="npm-feature-pill pill-http2" title="HTTP/2 Protocol Enabled">HTTP/2</span>';
+    if (h.block_exploits) featurePills += '<span class="npm-feature-pill pill-waf" title="Block Common Exploits (WAF)">WAF</span>';
+    if (h.websocket) featurePills += '<span class="npm-feature-pill" title="WebSockets Support">WS</span>';
+    if (h.caching) featurePills += '<span class="npm-feature-pill" title="Assets Caching">Cache</span>';
+    if (!featurePills) featurePills = '<span style="color:var(--text-muted); font-size:0.75rem;">—</span>';
+
+    const statusDotClass = h.online ? 'online' : 'error';
+    const errColor = (h.status_5xx > 0) ? '#ef4444' : 'var(--text-muted)';
+
+    html += `
+      <tr class="${selClass}" onclick="toggleHostMetricsFilter('${escapeHtml(h.domain)}')">
+        <td>
+          <div style="display:flex; align-items:center; gap:0.5rem;">
+            <span class="status-dot ${statusDotClass}" title="${h.online ? 'Online' : 'Offline'}"></span>
+            <div>
+              <strong style="color:var(--text-primary); font-size:0.88rem;">${escapeHtml(h.domain)}</strong>
+              <div style="font-size:0.72rem; color:var(--text-muted);">${escapeHtml(h.node_id || 'controller')} · ${escapeHtml(h.source || 'manual')}</div>
+            </div>
+          </div>
+        </td>
+        <td>
+          <span style="font-family:var(--font-mono); font-size:0.78rem; color:var(--text-secondary);">${escapeHtml(h.target)}</span>
+        </td>
+        <td>
+          <div style="display:flex; flex-wrap:wrap; gap:0.25rem;">
+            ${featurePills}
+          </div>
+        </td>
+        <td style="text-align:right; font-family:var(--font-mono); font-size:0.82rem;">
+          ${(h.requests || 0).toLocaleString()}
+        </td>
+        <td style="text-align:right; font-family:var(--font-mono); font-size:0.82rem;">
+          ${formatBytes(h.traffic_bytes || 0)}
+        </td>
+        <td style="text-align:right; font-family:var(--font-mono); font-size:0.82rem; color:${errColor};">
+          ${(h.status_5xx || 0).toLocaleString()}
+        </td>
+        <td style="text-align:right; font-family:var(--font-mono); font-size:0.82rem;">
+          ${h.avg_time_ms || 0} ms
+        </td>
+      </tr>
+    `;
+  });
+
+  tbody.innerHTML = html;
+}
+
+function toggleHostMetricsFilter(domain) {
+  if (!domain) return;
+  if (currentMetricsHost.toLowerCase() === domain.toLowerCase()) {
+    currentMetricsHost = 'all';
+  } else {
+    currentMetricsHost = domain;
+  }
+  const hostSelect = document.getElementById('npm-metrics-host-filter');
+  if (hostSelect) {
+    hostSelect.value = currentMetricsHost;
+  }
+  fetchNPMMetrics(false);
+}
+
+// Global exports for window/inline handlers
+window.initNPMMetricsTab = initNPMMetricsTab;
+window.fetchNPMMetrics = fetchNPMMetrics;
+window.probeNPMMetricsNow = probeNPMMetricsNow;
+window.toggleHostMetricsFilter = toggleHostMetricsFilter;
+window.formatBytes = formatBytes;
+
 
 
 

@@ -20,10 +20,10 @@ import (
 
 // Server handles HTTP API requests and serves the frontend Single Page Application.
 type Server struct {
-	cfg       *config.Config
-	syncer    *syncer.Syncer
-	webFS     fs.FS
-	httpSrv   *http.Server
+	cfg     *config.Config
+	syncer  *syncer.Syncer
+	webFS   fs.FS
+	httpSrv *http.Server
 }
 
 // NewServer initializes an HTTP server.
@@ -48,6 +48,8 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/events/stream", s.handleEventsStream)
 	mux.HandleFunc("/api/events", s.handleEventsHistory)
 	mux.HandleFunc("/api/config", s.handleConfig)
+	mux.HandleFunc("/api/metrics/overview", s.handleMetricsOverview)
+	mux.HandleFunc("/api/metrics/probe", s.handleMetricsProbe)
 
 	// Multi-Node Cluster Control Plane Routes
 	mux.HandleFunc("/api/cluster/nodes", s.handleClusterNodes)
@@ -325,6 +327,36 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 // handleMetrics serves standard Prometheus metrics.
 func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	metrics.Handler().ServeHTTP(w, r)
+}
+
+// handleMetricsOverview returns aggregated NPM proxy metrics, status codes, response times, and host breakdown.
+func (s *Server) handleMetricsOverview(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	period := r.URL.Query().Get("period")
+	hostFilter := r.URL.Query().Get("host")
+	forceProbe := r.URL.Query().Get("probe") == "true"
+
+	resp := s.syncer.GetNPMMetricsDashboard(r.Context(), period, hostFilter, forceProbe)
+	s.writeJSON(w, http.StatusOK, resp)
+}
+
+// handleMetricsProbe triggers an immediate health and latency probe across all NPM proxy hosts.
+func (s *Server) handleMetricsProbe(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	probed := s.syncer.ProbeNPMHostsNow(r.Context())
+	s.writeJSON(w, http.StatusOK, map[string]interface{}{
+		"status":       "ok",
+		"probed_hosts": probed,
+		"message":      fmt.Sprintf("Probed %d NPM proxy host(s)", probed),
+	})
 }
 
 // handleClusterNodes returns all nodes or removes/prunes offline nodes.

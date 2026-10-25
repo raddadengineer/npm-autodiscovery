@@ -5,3 +5,5 @@ ROADMAP.md
 .*_configs.json
 **/*_configs.json
 .*_pve_config.json
+data/
+npm-autodiscovery

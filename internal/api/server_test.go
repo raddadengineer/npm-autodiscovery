@@ -405,6 +405,51 @@ func TestRemoveOfflineNodesEndpoints(t *testing.T) {
 	}
 }
 
+func TestNPMMetricsOverviewAndProbeEndpoints(t *testing.T) {
+	cfg := &config.Config{
+		HostID:  "node-metrics-api-test",
+		Port:    8080,
+		NPMURL:  "http://127.0.0.1:81",
+		NPMUser: "test@example.com",
+	}
 
+	syncr := syncer.NewSyncer(cfg, nil, nil)
+	srv := &Server{
+		cfg:    cfg,
+		syncer: syncr,
+	}
 
+	// 1. Test GET /api/metrics/overview
+	req := httptest.NewRequest(http.MethodGet, "/api/metrics/overview?period=24h&host=all", nil)
+	rr := httptest.NewRecorder()
+	srv.handleMetricsOverview(rr, req)
 
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected HTTP 200 from /api/metrics/overview, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	var resp syncer.NPMMetricsDashboardResponse
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode metrics overview response: %v", err)
+	}
+	if resp.Period != "24h" {
+		t.Errorf("expected period '24h', got '%s'", resp.Period)
+	}
+
+	// 2. Test POST /api/metrics/probe
+	probeReq := httptest.NewRequest(http.MethodPost, "/api/metrics/probe", nil)
+	probeRR := httptest.NewRecorder()
+	srv.handleMetricsProbe(probeRR, probeReq)
+
+	if probeRR.Code != http.StatusOK {
+		t.Fatalf("expected HTTP 200 from /api/metrics/probe, got %d: %s", probeRR.Code, probeRR.Body.String())
+	}
+
+	var probeData map[string]interface{}
+	if err := json.Unmarshal(probeRR.Body.Bytes(), &probeData); err != nil {
+		t.Fatalf("failed to decode probe response: %v", err)
+	}
+	if probeData["status"] != "ok" {
+		t.Errorf("expected status 'ok', got '%v'", probeData["status"])
+	}
+}

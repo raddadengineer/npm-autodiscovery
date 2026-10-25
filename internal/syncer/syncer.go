@@ -190,6 +190,8 @@ type Syncer struct {
 	certCacheMutex   sync.RWMutex
 	cachedCerts      []npm.Certificate
 	certCacheExpires time.Time
+
+	npmMetrics *npmMetricsState
 }
 
 // NewSyncer instantiates the syncer with dependencies.
@@ -210,6 +212,7 @@ func NewSyncer(cfg *config.Config, dClient *docker.Client, nClient *npm.Client) 
 		syncTrigger:       make(chan struct{}, 1),
 		workerPushTrigger: make(chan struct{}, 1),
 		clusterRegistry:   NewClusterRegistry(),
+		npmMetrics:        newNPMMetricsState(),
 	}
 }
 
@@ -1485,6 +1488,11 @@ func (s *Syncer) performFullSync(ctx context.Context, triggerSource string) {
 		len(allDockerStreams)+len(allIaCStreams)+len(allPVEStreams)+len(allLXDStreams)), "")
 
 	s.triggerWorkerPush()
+	go func() {
+		probeCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		s.ProbeNPMHostsNow(probeCtx)
+	}()
 }
 
 // syncIaCRoutes loads and applies declarative routes from static YAML/JSON manifests.
@@ -2309,17 +2317,17 @@ func (s *Syncer) GetStatusOverview(ctx context.Context) StatusOverview {
 	return StatusOverview{
 		HostID:               hID,
 		HostIP:               hIP,
-		DockerConnected:     dockerConn,
-		DockerSocket:        dockerSocket,
-		DockerVersion:       dVer,
-		NPMConnected:        npmConn,
-		NPMURL:              npmURL,
-		ActiveProxies:       activeCount,
-		ActiveStreams:       activeStreamsCount,
-		RunningContainers:   runningCount,
-		TotalEvents:         totEvents,
-		LastFullSync:        lastSync,
-		Uptime:              upSec,
+		DockerConnected:      dockerConn,
+		DockerSocket:         dockerSocket,
+		DockerVersion:        dVer,
+		NPMConnected:         npmConn,
+		NPMURL:               npmURL,
+		ActiveProxies:        activeCount,
+		ActiveStreams:        activeStreamsCount,
+		RunningContainers:    runningCount,
+		TotalEvents:          totEvents,
+		LastFullSync:         lastSync,
+		Uptime:               upSec,
 		PVEEnabled:           pveEnabled,
 		PVEConnected:         pveConn,
 		PVEURL:               pveURL,
@@ -2687,7 +2695,6 @@ func (s *Syncer) GetRecentEventsSince(since time.Time) []LogEvent {
 	}
 	return result
 }
-
 
 // GetLogEvents returns recent log history.
 func (s *Syncer) GetLogEvents(limit int) []LogEvent {
