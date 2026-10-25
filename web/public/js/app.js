@@ -3253,8 +3253,43 @@ function initProxmoxModal() {
 // ==============================================================================
 let currentMetricsPeriod = '24h';
 let currentMetricsHost = 'all';
+let currentMetricsClassFilter = null; // '2xx' | '3xx' | '4xx' | '5xx' | null
+let currentMetricsCodeFilter = null;  // number (e.g. 502) | null
 let latestNPMMetricsData = null;
 let isFetchingMetrics = false;
+
+function filterByStatusClass(cls) {
+  if (currentMetricsClassFilter === cls && currentMetricsCodeFilter === null) {
+    clearStatusDrillDown();
+    return;
+  }
+  currentMetricsClassFilter = cls;
+  currentMetricsCodeFilter = null;
+  if (latestNPMMetricsData) {
+    renderNPMMetricsDashboard(latestNPMMetricsData);
+  }
+}
+
+function filterByStatusCode(code, cls) {
+  if (currentMetricsCodeFilter === code) {
+    clearStatusDrillDown();
+    return;
+  }
+  currentMetricsCodeFilter = code;
+  currentMetricsClassFilter = cls || (code ? Math.floor(code / 100) + 'xx' : null);
+  if (latestNPMMetricsData) {
+    renderNPMMetricsDashboard(latestNPMMetricsData);
+  }
+}
+
+function clearStatusDrillDown() {
+  if (!currentMetricsClassFilter && !currentMetricsCodeFilter) return;
+  currentMetricsClassFilter = null;
+  currentMetricsCodeFilter = null;
+  if (latestNPMMetricsData) {
+    renderNPMMetricsDashboard(latestNPMMetricsData);
+  }
+}
 
 function formatBytes(bytes) {
   if (!bytes || bytes <= 0 || isNaN(bytes)) return '0 B';
@@ -3300,6 +3335,12 @@ function initNPMMetricsTab() {
         renderNPMHostsTable(latestNPMMetricsData.hosts);
       }
     });
+  }
+
+  // 5. Clear drill-down button
+  const btnClearDrill = document.getElementById('btn-clear-drilldown');
+  if (btnClearDrill) {
+    btnClearDrill.addEventListener('click', clearStatusDrillDown);
   }
 }
 
@@ -3455,19 +3496,106 @@ function renderNPMMetricsDashboard(data) {
   // 5. Main Bar Chart (Requests per hour/day)
   const chartTitle = document.getElementById('npm-requests-chart-title');
   const chartSub = document.getElementById('npm-requests-chart-subtitle');
+  const chartTag = document.getElementById('npm-chart-drilldown-tag');
+  const chartTagText = document.getElementById('npm-chart-drilldown-text');
+
+  const statusCodes = Array.isArray(data.status_codes) ? data.status_codes : [];
+  const classes = data.status_classes || {};
+  const c2xx = classes['2xx'] || { count: 0, percent: 0, peak: 0, series: [] };
+  const c3xx = classes['3xx'] || { count: 0, percent: 0, peak: 0, series: [] };
+  const c4xx = classes['4xx'] || { count: 0, percent: 0, peak: 0, series: [] };
+  const c5xx = classes['5xx'] || { count: 0, percent: 0, peak: 0, series: [] };
+
+  const timeline = Array.isArray(data.timeline) ? data.timeline : [];
+
+  let isFiltered = false;
+  let activeFilterLabel = '';
+  let activeFilterClass = '';
+  let filteredSeries = null;
+  let filteredMax = 0;
+
+  if (currentMetricsCodeFilter) {
+    const codeItem = statusCodes.find(c => c.code === currentMetricsCodeFilter);
+    isFiltered = true;
+    activeFilterClass = (codeItem && codeItem.class) || currentMetricsClassFilter || '2xx';
+    const codeTitle = codeItem ? codeItem.title : '';
+    activeFilterLabel = `HTTP ${currentMetricsCodeFilter}${codeTitle ? ` · ${codeTitle}` : ''}`;
+    if (codeItem && Array.isArray(codeItem.series)) {
+      filteredSeries = codeItem.series;
+      filteredMax = codeItem.peak || 0;
+    }
+  } else if (currentMetricsClassFilter) {
+    const classData = classes[currentMetricsClassFilter] || {};
+    isFiltered = true;
+    activeFilterClass = currentMetricsClassFilter;
+    const classTitles = {
+      '2xx': '2xx Success',
+      '3xx': '3xx Redirect',
+      '4xx': '4xx Client error',
+      '5xx': '5xx Server error'
+    };
+    activeFilterLabel = classTitles[currentMetricsClassFilter] || currentMetricsClassFilter;
+    if (Array.isArray(classData.series)) {
+      filteredSeries = classData.series;
+      filteredMax = classData.peak || 0;
+    }
+  }
+
+  // Update chart header and tags
+  const baseTitle = currentMetricsPeriod === '24h' ? 'Requests per hour' : 'Requests per day';
   if (chartTitle) {
-    chartTitle.textContent = currentMetricsPeriod === '24h' ? 'Requests per hour' : 'Requests per day';
+    if (isFiltered) {
+      chartTitle.textContent = `${baseTitle} · ${activeFilterLabel}`;
+    } else {
+      chartTitle.textContent = baseTitle;
+    }
   }
   if (chartSub) {
     const subMap = { '24h': 'Last 24 hours', '7d': 'Last 7 days', '30d': 'Last 30 days' };
-    chartSub.textContent = subMap[currentMetricsPeriod] || 'Selected period';
+    const baseSub = subMap[currentMetricsPeriod] || 'Selected period';
+    if (isFiltered) {
+      chartSub.textContent = `${baseSub} · Filtered time series`;
+    } else {
+      chartSub.textContent = baseSub;
+    }
   }
 
-  const timeline = Array.isArray(data.timeline) ? data.timeline : [];
+  if (chartTag && chartTagText) {
+    if (isFiltered) {
+      chartTag.style.display = 'inline-flex';
+      chartTag.className = `npm-chart-filter-tag tag-${activeFilterClass}`;
+      chartTagText.textContent = activeFilterLabel;
+    } else {
+      chartTag.style.display = 'none';
+    }
+  }
+
+  // Update Status codes section drill-down badge
+  const drillWrap = document.getElementById('npm-drilldown-active-wrap');
+  const drillLabel = document.getElementById('npm-drilldown-label');
+  if (drillWrap && drillLabel) {
+    if (isFiltered) {
+      drillWrap.style.display = 'inline-flex';
+      drillWrap.className = `npm-drilldown-badge badge-${activeFilterClass}`;
+      drillLabel.textContent = activeFilterLabel;
+    } else {
+      drillWrap.style.display = 'none';
+    }
+  }
+
+  // Calculate chart max scale
   let maxReq = 0;
-  timeline.forEach(slot => {
-    if (slot.requests > maxReq) maxReq = slot.requests;
-  });
+  if (isFiltered) {
+    if (filteredMax > 0) {
+      maxReq = filteredMax;
+    } else if (filteredSeries) {
+      filteredSeries.forEach(v => { if (v > maxReq) maxReq = v; });
+    }
+  } else {
+    timeline.forEach(slot => {
+      if (slot.requests > maxReq) maxReq = slot.requests;
+    });
+  }
 
   // Y-Axis labels
   const yAxis = document.getElementById('npm-requests-y-axis');
@@ -3488,13 +3616,29 @@ function renderNPMMetricsDashboard(data) {
       barsStage.innerHTML = '<div style="width:100%; text-align:center; color:var(--text-muted); font-size:0.85rem; padding-top:60px;">No requests recorded in this period</div>';
     } else {
       let barsHtml = '';
-      timeline.forEach(slot => {
-        const req = slot.requests || 0;
+      timeline.forEach((slot, i) => {
+        let req = slot.requests || 0;
+        let barClass = '';
+        let tip = '';
+
+        if (isFiltered) {
+          barClass = `bar-filter-${activeFilterClass}`;
+          if (filteredSeries && i < filteredSeries.length) {
+            req = filteredSeries[i];
+          } else if (currentMetricsClassFilter) {
+            req = slot['status_' + currentMetricsClassFilter] || 0;
+          }
+          const totalSlotReq = slot.requests || 0;
+          const sharePct = totalSlotReq > 0 ? ((req / totalSlotReq) * 100).toFixed(1) : '0.0';
+          tip = `${slot.full_label || slot.label}: ${req.toLocaleString()} reqs (${sharePct}% of total ${totalSlotReq.toLocaleString()}) · ${activeFilterLabel}`;
+        } else {
+          tip = `${slot.full_label || slot.label}: ${req.toLocaleString()} reqs (${formatBytes(slot.traffic_bytes || 0)}) · ${slot.avg_time_ms || 0}ms avg`;
+        }
+
         const pct = maxReq > 0 ? Math.max(3, Math.round((req / maxReq) * 100)) : 3;
-        const tip = `${slot.full_label || slot.label}: ${req.toLocaleString()} reqs (${formatBytes(slot.traffic_bytes || 0)}) · ${slot.avg_time_ms || 0}ms avg`;
         barsHtml += `
           <div class="npm-bar-col" title="${escapeHtml(tip)}">
-            <div class="npm-bar-fill" style="height: ${pct}%;"></div>
+            <div class="npm-bar-fill ${barClass}" style="height: ${pct}%;"></div>
           </div>
         `;
       });
@@ -3541,30 +3685,42 @@ function renderNPMMetricsDashboard(data) {
   }
 
   // 6. Status Codes Section & Stacked Distribution Bar
-  const classes = data.status_classes || {};
-  const c2xx = classes['2xx'] || { count: 0, percent: 0, peak: 0, series: [] };
-  const c3xx = classes['3xx'] || { count: 0, percent: 0, peak: 0, series: [] };
-  const c4xx = classes['4xx'] || { count: 0, percent: 0, peak: 0, series: [] };
-  const c5xx = classes['5xx'] || { count: 0, percent: 0, peak: 0, series: [] };
-
   const stackedBar = document.getElementById('npm-status-stacked-bar');
   if (stackedBar) {
+    const dim2 = (currentMetricsClassFilter && currentMetricsClassFilter !== '2xx') ? 'dimmed' : '';
+    const dim3 = (currentMetricsClassFilter && currentMetricsClassFilter !== '3xx') ? 'dimmed' : '';
+    const dim4 = (currentMetricsClassFilter && currentMetricsClassFilter !== '4xx') ? 'dimmed' : '';
+    const dim5 = (currentMetricsClassFilter && currentMetricsClassFilter !== '5xx') ? 'dimmed' : '';
+
     stackedBar.innerHTML = `
-      <div class="npm-stacked-seg seg-2xx" style="width: ${c2xx.percent}%;" title="2xx: ${c2xx.percent}%"></div>
-      <div class="npm-stacked-seg seg-3xx" style="width: ${c3xx.percent}%;" title="3xx: ${c3xx.percent}%"></div>
-      <div class="npm-stacked-seg seg-4xx" style="width: ${c4xx.percent}%;" title="4xx: ${c4xx.percent}%"></div>
-      <div class="npm-stacked-seg seg-5xx" style="width: ${c5xx.percent}%;" title="5xx: ${c5xx.percent}%"></div>
+      <div class="npm-stacked-seg seg-2xx ${dim2}" style="width: ${c2xx.percent}%;" title="2xx: ${c2xx.percent}% · Click to filter" onclick="filterByStatusClass('2xx')"></div>
+      <div class="npm-stacked-seg seg-3xx ${dim3}" style="width: ${c3xx.percent}%;" title="3xx: ${c3xx.percent}% · Click to filter" onclick="filterByStatusClass('3xx')"></div>
+      <div class="npm-stacked-seg seg-4xx ${dim4}" style="width: ${c4xx.percent}%;" title="4xx: ${c4xx.percent}% · Click to filter" onclick="filterByStatusClass('4xx')"></div>
+      <div class="npm-stacked-seg seg-5xx ${dim5}" style="width: ${c5xx.percent}%;" title="5xx: ${c5xx.percent}% · Click to filter" onclick="filterByStatusClass('5xx')"></div>
     `;
   }
 
-  const leg2 = document.getElementById('npm-legend-2xx');
-  if (leg2) leg2.textContent = `${c2xx.count.toLocaleString()} · ${c2xx.percent}%`;
-  const leg3 = document.getElementById('npm-legend-3xx');
-  if (leg3) leg3.textContent = `${c3xx.count.toLocaleString()} · ${c3xx.percent}%`;
-  const leg4 = document.getElementById('npm-legend-4xx');
-  if (leg4) leg4.textContent = `${c4xx.count.toLocaleString()} · ${c4xx.percent}%`;
-  const leg5 = document.getElementById('npm-legend-5xx');
-  if (leg5) leg5.textContent = `${c5xx.count.toLocaleString()} · ${c5xx.percent}%`;
+  const legendContainer = document.getElementById('npm-status-stacked-legend');
+  if (legendContainer) {
+    legendContainer.innerHTML = `
+      <div class="npm-legend-item ${currentMetricsClassFilter === '2xx' ? 'selected-legend' : (currentMetricsClassFilter ? 'dimmed' : '')}" onclick="filterByStatusClass('2xx')" title="Click to filter by 2xx Success">
+        <div class="npm-legend-title"><span class="npm-cls-icon cls-2xx">✓</span> 2xx · Success</div>
+        <div class="npm-legend-val" id="npm-legend-2xx">${c2xx.count.toLocaleString()} · ${c2xx.percent} %</div>
+      </div>
+      <div class="npm-legend-item ${currentMetricsClassFilter === '3xx' ? 'selected-legend' : (currentMetricsClassFilter ? 'dimmed' : '')}" onclick="filterByStatusClass('3xx')" title="Click to filter by 3xx Redirect">
+        <div class="npm-legend-title"><span class="npm-cls-icon cls-3xx">↗</span> 3xx · Redirect</div>
+        <div class="npm-legend-val" id="npm-legend-3xx">${c3xx.count.toLocaleString()} · ${c3xx.percent} %</div>
+      </div>
+      <div class="npm-legend-item ${currentMetricsClassFilter === '4xx' ? 'selected-legend' : (currentMetricsClassFilter ? 'dimmed' : '')}" onclick="filterByStatusClass('4xx')" title="Click to filter by 4xx Client error">
+        <div class="npm-legend-title"><span class="npm-cls-icon cls-4xx">⚠</span> 4xx · Client error</div>
+        <div class="npm-legend-val" id="npm-legend-4xx">${c4xx.count.toLocaleString()} · ${c4xx.percent} %</div>
+      </div>
+      <div class="npm-legend-item ${currentMetricsClassFilter === '5xx' ? 'selected-legend' : (currentMetricsClassFilter ? 'dimmed' : '')}" onclick="filterByStatusClass('5xx')" title="Click to filter by 5xx Server error">
+        <div class="npm-legend-title"><span class="npm-cls-icon cls-5xx">⊗</span> 5xx · Server error</div>
+        <div class="npm-legend-val" id="npm-legend-5xx">${c5xx.count.toLocaleString()} · ${c5xx.percent} %</div>
+      </div>
+    `;
+  }
 
   // 7. Status Class Cards (4 cards with sparklines)
   const classGrid = document.getElementById('npm-class-cards-grid');
@@ -3587,8 +3743,17 @@ function renderNPMMetricsDashboard(data) {
         sparkHtml += `<div class="npm-spark-bar bar-${cfg.cls}" style="height:${hPct}%;" title="${val.toLocaleString()}"></div>`;
       });
 
+      let cardStateClass = '';
+      let cardTooltip = `Click to drill down into ${cfg.title}`;
+      if (currentMetricsClassFilter === cfg.cls) {
+        cardStateClass = `selected-class-card selected-${cfg.cls}`;
+        cardTooltip = `Active filter ${cfg.title} · Click to reset`;
+      } else if (currentMetricsClassFilter) {
+        cardStateClass = 'dimmed';
+      }
+
       cHtml += `
-        <div class="npm-class-card glass-panel">
+        <div class="npm-class-card glass-panel ${cardStateClass}" onclick="filterByStatusClass('${cfg.cls}')" title="${cardTooltip}">
           <div class="npm-class-card-top">
             <span class="npm-class-card-title">
               <span class="npm-cls-icon cls-${cfg.cls}">${cfg.icon}</span>
@@ -3608,7 +3773,6 @@ function renderNPMMetricsDashboard(data) {
 
   // 8. Individual Status Code Cards & Table
   const codesGrid = document.getElementById('npm-status-codes-grid');
-  const statusCodes = Array.isArray(data.status_codes) ? data.status_codes : [];
   if (codesGrid) {
     if (statusCodes.length === 0) {
       codesGrid.innerHTML = '<div style="grid-column: 1 / -1; padding: 1.5rem; text-align: center; color: var(--text-muted);">No HTTP status codes recorded in this time range</div>';
@@ -3623,8 +3787,23 @@ function renderNPMMetricsDashboard(data) {
           sparkHtml += `<div class="npm-spark-bar bar-${item.class}" style="height:${hPct}%;" title="${val.toLocaleString()}"></div>`;
         });
 
+        let codeStateClass = '';
+        let codeTooltip = `Click to drill down into HTTP ${item.code} (${escapeHtml(item.title)})`;
+        if (currentMetricsCodeFilter === item.code) {
+          codeStateClass = `selected-code-card selected-${item.class}`;
+          codeTooltip = `Active filter HTTP ${item.code} · Click to reset`;
+        } else if (currentMetricsCodeFilter) {
+          codeStateClass = 'dimmed';
+        } else if (currentMetricsClassFilter) {
+          if (item.class === currentMetricsClassFilter) {
+            codeStateClass = `selected-${item.class}`;
+          } else {
+            codeStateClass = 'dimmed';
+          }
+        }
+
         sHtml += `
-          <div class="npm-code-card">
+          <div class="npm-code-card ${codeStateClass}" onclick="filterByStatusCode(${item.code}, '${item.class}')" title="${codeTooltip}">
             <div class="npm-code-card-top">
               <span class="npm-code-num">${item.code}</span>
               <span class="npm-code-pct">${item.percent}%</span>
@@ -3645,8 +3824,19 @@ function renderNPMMetricsDashboard(data) {
   if (codesTbody) {
     let ctHtml = '';
     statusCodes.forEach(item => {
+      let rowClass = '';
+      if (currentMetricsCodeFilter === item.code) {
+        rowClass = 'selected-status-row';
+      } else if (currentMetricsCodeFilter) {
+        rowClass = 'dimmed-row';
+      } else if (currentMetricsClassFilter) {
+        if (item.class !== currentMetricsClassFilter) {
+          rowClass = 'dimmed-row';
+        }
+      }
+
       ctHtml += `
-        <tr>
+        <tr data-status-code="${item.code}" class="${rowClass}" onclick="filterByStatusCode(${item.code}, '${item.class}')" title="Click to filter by HTTP ${item.code}">
           <td><strong style="font-family:var(--font-mono);">${item.code}</strong></td>
           <td><span class="npm-feature-pill pill-${item.class}">${item.class}</span></td>
           <td>${escapeHtml(item.title)}</td>
@@ -3670,19 +3860,48 @@ function renderNPMHostsTable(hosts) {
   const searchInput = document.getElementById('npm-metrics-hosts-search');
   const term = (searchInput ? searchInput.value : '').toLowerCase().trim();
 
+  // Dynamic subtitle feedback based on active drill-down
+  const subtitleEl = document.getElementById('npm-hosts-table-subtitle');
+  if (subtitleEl) {
+    if (currentMetricsCodeFilter) {
+      subtitleEl.innerHTML = `Showing hosts with HTTP ${currentMetricsCodeFilter} activity. <a href="javascript:void(0)" onclick="clearStatusDrillDown()" style="color:var(--accent-primary); text-decoration:underline; font-weight:600; margin-left:0.35rem;">Clear filter</a>`;
+    } else if (currentMetricsClassFilter) {
+      const clsName = { '2xx': '2xx Success', '3xx': '3xx Redirect', '4xx': '4xx Client error', '5xx': '5xx Server error' }[currentMetricsClassFilter] || currentMetricsClassFilter;
+      subtitleEl.innerHTML = `Showing hosts with ${clsName} activity. <a href="javascript:void(0)" onclick="clearStatusDrillDown()" style="color:var(--accent-primary); text-decoration:underline; font-weight:600; margin-left:0.35rem;">Clear filter</a>`;
+    } else {
+      subtitleEl.textContent = 'Click any host row to filter metrics above, or click "All hosts" to reset.';
+    }
+  }
+
   const filtered = hosts.filter(h => {
-    if (!term) return true;
-    return (h.domain && h.domain.toLowerCase().includes(term)) ||
-           (h.target && h.target.toLowerCase().includes(term)) ||
-           (h.node_id && h.node_id.toLowerCase().includes(term)) ||
-           (h.source && h.source.toLowerCase().includes(term));
+    // 1. Text search filter
+    if (term) {
+      const match = (h.domain && h.domain.toLowerCase().includes(term)) ||
+                    (h.target && h.target.toLowerCase().includes(term)) ||
+                    (h.node_id && h.node_id.toLowerCase().includes(term)) ||
+                    (h.source && h.source.toLowerCase().includes(term));
+      if (!match) return false;
+    }
+
+    // 2. Status code or status class drill-down filter
+    if (currentMetricsCodeFilter) {
+      if (h.latest_status === currentMetricsCodeFilter) return true;
+      if (currentMetricsClassFilter && (h['status_' + currentMetricsClassFilter] > 0)) return true;
+      return false;
+    } else if (currentMetricsClassFilter) {
+      return (h['status_' + currentMetricsClassFilter] || 0) > 0;
+    }
+
+    return true;
   });
 
   if (filtered.length === 0) {
+    const filterReason = currentMetricsCodeFilter ? `HTTP ${currentMetricsCodeFilter}` : (currentMetricsClassFilter || 'search term');
     tbody.innerHTML = `
       <tr>
         <td colspan="7" style="text-align:center; padding: 2rem; color:var(--text-muted);">
-          No hosts match the search criteria
+          No hosts match the active filter (${escapeHtml(filterReason)}).
+          <button type="button" class="btn-clear-drilldown" onclick="clearStatusDrillDown()" style="margin-left:0.75rem;">Clear drill-down</button>
         </td>
       </tr>
     `;
@@ -3763,6 +3982,9 @@ window.initNPMMetricsTab = initNPMMetricsTab;
 window.fetchNPMMetrics = fetchNPMMetrics;
 window.probeNPMMetricsNow = probeNPMMetricsNow;
 window.toggleHostMetricsFilter = toggleHostMetricsFilter;
+window.filterByStatusClass = filterByStatusClass;
+window.filterByStatusCode = filterByStatusCode;
+window.clearStatusDrillDown = clearStatusDrillDown;
 window.formatBytes = formatBytes;
 
 

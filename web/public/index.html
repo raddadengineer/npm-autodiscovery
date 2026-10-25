@@ -701,8 +701,14 @@
           <!-- Main Bar Chart: Requests per hour / day -->
           <div class="npm-chart-card glass-panel">
             <div class="npm-chart-header">
-              <h3 id="npm-requests-chart-title">Requests per hour</h3>
-              <span class="npm-chart-scale-hint" id="npm-requests-chart-subtitle">Last 24 hours</span>
+              <div>
+                <h3 id="npm-requests-chart-title">Requests per hour</h3>
+                <span class="npm-chart-scale-hint" id="npm-requests-chart-subtitle">Last 24 hours</span>
+              </div>
+              <div id="npm-chart-drilldown-tag" class="npm-chart-filter-tag" style="display: none;">
+                <span id="npm-chart-drilldown-text">5xx</span>
+                <button type="button" class="btn-clear-drilldown" onclick="clearStatusDrillDown()" title="Reset chart view">✕ Reset</button>
+              </div>
             </div>
 
             <div class="npm-main-chart-layout">
@@ -750,8 +756,17 @@
 
           <!-- Status Codes Section -->
           <div class="npm-section-block">
-            <h3 class="npm-section-title">Status codes</h3>
-            <p class="npm-section-subtitle">How the responses split up, and how each class and code ran over time.</p>
+            <div class="npm-section-header-wrap">
+              <div>
+                <h3 class="npm-section-title">Status codes</h3>
+                <p class="npm-section-subtitle">How the responses split up, and how each class and code ran over time.</p>
+              </div>
+              <div id="npm-drilldown-active-wrap" class="npm-drilldown-badge" style="display: none;">
+                <span class="npm-drilldown-icon">🔍</span>
+                <span>Filtered by: <strong id="npm-drilldown-label">5xx</strong></span>
+                <button type="button" class="btn-clear-drilldown" id="btn-clear-drilldown" title="Clear filter" onclick="clearStatusDrillDown()">✕ Clear</button>
+              </div>
+            </div>
 
             <!-- Stacked Bar Card -->
             <div class="npm-status-split-card glass-panel">
@@ -826,7 +841,7 @@
             <div class="npm-hosts-card-header">
               <div>
                 <h3>Hosts</h3>
-                <p class="panel-subtitle">Click any host row to filter metrics above, or click "All hosts" to reset.</p>
+                <p class="panel-subtitle" id="npm-hosts-table-subtitle">Click any host row to filter metrics above, or click "All hosts" to reset.</p>
               </div>
               <div class="search-input-wrap">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
