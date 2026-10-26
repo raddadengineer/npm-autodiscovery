@@ -541,7 +541,7 @@ function openColumnFilterPopover(th, tableId, colKey, label) {
         ▼ Desc
       </button>
       <button type="button" class="popover-sort-btn" data-sort="none">
-        ⟲ Clear Sort
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px; margin-right:3px;"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>Clear Sort
       </button>
     </div>
 
@@ -1115,13 +1115,13 @@ function renderStreamsTable(filterText = '') {
     if (stream.udp) protoBadges.push(`<span class="badge badge-violet">UDP</span>`);
     if (protoBadges.length === 0) protoBadges.push(`<span class="badge badge-gray">None</span>`);
 
-    let sourceBadge = `<span class="badge badge-cyan" style="font-size: 0.7rem;">🐳 Docker</span>`;
+    let sourceBadge = `<span class="badge badge-cyan" style="font-size: 0.7rem;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px; margin-right:3px;"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path></svg>Docker</span>`;
     if (stream.source === 'iac') {
-      sourceBadge = `<span class="badge badge-amber" style="font-size: 0.7rem;" title="IaC Manifest: ${escapeHtml(stream.source_file || 'routes.yaml')}">📄 IaC</span>`;
+      sourceBadge = `<span class="badge badge-amber" style="font-size: 0.7rem;" title="IaC Manifest: ${escapeHtml(stream.source_file || 'routes.yaml')}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px; margin-right:3px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>IaC</span>`;
     } else if (stream.source === 'pve') {
-      sourceBadge = `<span class="badge" style="background: rgba(249, 115, 22, 0.15); color: #f97316; font-size: 0.7rem;" title="Proxmox VE LXC">⚡ Proxmox</span>`;
+      sourceBadge = `<span class="badge" style="background: rgba(249, 115, 22, 0.15); color: #f97316; font-size: 0.7rem;" title="Proxmox VE LXC"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px; margin-right:3px;"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>Proxmox</span>`;
     } else if (stream.source === 'lxd') {
-      sourceBadge = `<span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #10b981; font-size: 0.7rem;" title="Canonical LXD / Incus">🐧 LXD/Incus</span>`;
+      sourceBadge = `<span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #10b981; font-size: 0.7rem;" title="Canonical LXD / Incus"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px; margin-right:3px;"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>LXD/Incus</span>`;
     }
 
     const lastSyncTime = stream.last_synced ? new Date(stream.last_synced).toLocaleTimeString() : 'N/A';
@@ -1206,27 +1206,27 @@ function renderProxiesTable(filterText = '') {
     // SSL badge
     let sslBadge = `<span class="badge badge-gray">Disabled</span>`;
     if (proxy.ssl_forced) {
-      sslBadge = `<span class="badge badge-emerald">🔒 Forced HTTPS</span>`;
+      sslBadge = `<span class="badge badge-emerald"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px; margin-right:3px;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>Forced HTTPS</span>`;
     } else if (proxy.ssl_enabled) {
-      sslBadge = `<span class="badge badge-cyan">🔒 Enabled</span>`;
+      sslBadge = `<span class="badge badge-cyan"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px; margin-right:3px;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>Enabled</span>`;
     }
 
     const lastSyncTime = proxy.last_synced ? new Date(proxy.last_synced).toLocaleTimeString() : 'N/A';
 
-    let sourceBadge = `<span class="badge badge-cyan" style="font-size: 0.7rem;">🐳 Docker</span>`;
+    let sourceBadge = `<span class="badge badge-cyan" style="font-size: 0.7rem;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px; margin-right:3px;"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path></svg>Docker</span>`;
     if (proxy.source === 'iac') {
-      sourceBadge = `<span class="badge badge-amber" style="font-size: 0.7rem;" title="IaC Manifest: ${escapeHtml(proxy.source_file || 'routes.yaml')}">📄 IaC</span>`;
+      sourceBadge = `<span class="badge badge-amber" style="font-size: 0.7rem;" title="IaC Manifest: ${escapeHtml(proxy.source_file || 'routes.yaml')}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px; margin-right:3px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>IaC</span>`;
     } else if (proxy.source === 'pve') {
-      sourceBadge = `<span class="badge" style="background: rgba(249, 115, 22, 0.15); color: #f97316; font-size: 0.7rem;" title="Proxmox VE LXC">⚡ Proxmox</span>`;
+      sourceBadge = `<span class="badge" style="background: rgba(249, 115, 22, 0.15); color: #f97316; font-size: 0.7rem;" title="Proxmox VE LXC"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px; margin-right:3px;"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>Proxmox</span>`;
     } else if (proxy.source === 'lxd') {
-      sourceBadge = `<span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #10b981; font-size: 0.7rem;" title="Canonical LXD / Incus">🐧 LXD/Incus</span>`;
+      sourceBadge = `<span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #10b981; font-size: 0.7rem;" title="Canonical LXD / Incus"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px; margin-right:3px;"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>LXD/Incus</span>`;
     } else if (proxy.source === 'manual' || proxy.source === 'npm-portal') {
-      sourceBadge = `<span class="badge badge-amber" style="font-size: 0.7rem;" title="Configured directly via Nginx Proxy Manager portal">⚙️ NPM Portal</span>`;
+      sourceBadge = `<span class="badge badge-amber" style="font-size: 0.7rem;" title="Configured directly via Nginx Proxy Manager portal"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px; margin-right:3px;"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>NPM Portal</span>`;
     }
 
     let liveStatusBadge = `<span class="badge badge-emerald">● Live</span>`;
     if (proxy.status === 'disabled') {
-      liveStatusBadge = `<span class="badge badge-gray">⏸ Disabled</span>`;
+      liveStatusBadge = `<span class="badge badge-gray"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px; margin-right:3px;"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>Disabled</span>`;
     }
 
     let stratBadge = `<span class="badge badge-gray">${escapeHtml(proxy.resolution_method || 'auto')}</span>`;
@@ -1248,12 +1248,12 @@ function renderProxiesTable(filterText = '') {
 
     let locationBadge = '';
     if (proxy.locations && proxy.locations.length > 0) {
-      locationBadge = `<div style="margin-top: 4px;"><span class="badge" style="background: rgba(0, 242, 254, 0.12); color: #00f2fe; font-size: 0.7rem;" title="Custom Locations: ${proxy.locations.map(l => l.path).join(', ')}">📍 ${proxy.locations.length} Locations</span></div>`;
+      locationBadge = `<div style="margin-top: 4px;"><span class="badge" style="background: rgba(0, 242, 254, 0.12); color: #00f2fe; font-size: 0.7rem;" title="Custom Locations: ${proxy.locations.map(l => l.path).join(', ')}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px; margin-right:3px;"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>${proxy.locations.length} Locations</span></div>`;
     }
 
     let replicaBadge = '';
     if (proxy.upstream_replicas && proxy.upstream_replicas > 1) {
-      replicaBadge = `<div style="margin-top: 4px;"><span class="badge" style="background: rgba(16, 185, 129, 0.12); color: #10b981; font-size: 0.7rem;" title="Load-balanced across ${proxy.upstream_replicas} containers">⚖️ ${proxy.upstream_replicas} Replicas (${escapeHtml(proxy.upstream_balancing || 'round_robin')})</span></div>`;
+      replicaBadge = `<div style="margin-top: 4px;"><span class="badge" style="background: rgba(16, 185, 129, 0.12); color: #10b981; font-size: 0.7rem;" title="Load-balanced across ${proxy.upstream_replicas} containers"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px; margin-right:3px;"><path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"></path><path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"></path><path d="M7 21h10"></path><path d="M12 3v18"></path><path d="M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"></path></svg>${proxy.upstream_replicas} Replicas (${escapeHtml(proxy.upstream_balancing || 'round_robin')})</span></div>`;
     }
 
     tr.innerHTML = `
@@ -1357,7 +1357,13 @@ function renderContainersTable(filterText = '') {
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td colspan="8" style="text-align: center; padding: 3rem 1rem; color: var(--text-muted);">
-        <div style="font-size: 1.5rem; margin-bottom: 0.5rem;">📦</div>
+        <div style="margin-bottom: 0.5rem;">
+          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color: var(--text-muted);">
+            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+            <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+            <line x1="12" y1="22.08" x2="12" y2="12"></line>
+          </svg>
+        </div>
         <div style="font-weight: 600; margin-bottom: 0.25rem;">No containers found</div>
         <div style="font-size: 0.85rem;">
           ${containersData.length === 0 
@@ -1375,20 +1381,20 @@ function renderContainersTable(filterText = '') {
 
     let statusBadge = '';
     if (c.manual_npm || (c.ignored_reason && c.ignored_reason.includes('NPM portal'))) {
-      statusBadge = `<span class="badge badge-amber" title="Manually configured from NPM portal">⚙️ NPM Portal</span>`;
+      statusBadge = `<span class="badge badge-amber" title="Manually configured from NPM portal"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px; margin-right:3px;"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>NPM Portal</span>`;
     } else if (c.discovered) {
-      statusBadge = `<span class="badge badge-emerald">✓ Discovered</span>`;
+      statusBadge = `<span class="badge badge-emerald"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px; margin-right:3px;"><polyline points="20 6 9 17 4 12"></polyline></svg>Discovered</span>`;
     } else {
       statusBadge = `<span class="badge badge-gray" title="${escapeHtml(c.ignored_reason || '')}">Ignored</span>`;
     }
 
     let healthBadge = '';
     if (c.health_status === 'healthy') {
-      healthBadge = `<span class="badge badge-emerald" style="font-size:0.7rem; margin-left:4px;" title="HealthCheck: Healthy">💚 healthy</span>`;
+      healthBadge = `<span class="badge badge-emerald" style="font-size:0.7rem; margin-left:4px;" title="HealthCheck: Healthy"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px; margin-right:2px;"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>healthy</span>`;
     } else if (c.health_status === 'starting') {
-      healthBadge = `<span class="badge badge-amber" style="font-size:0.7rem; margin-left:4px;" title="HealthCheck: Warming Up (Held by Zero-502)">⏳ starting</span>`;
+      healthBadge = `<span class="badge badge-amber" style="font-size:0.7rem; margin-left:4px;" title="HealthCheck: Warming Up (Held by Zero-502)"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px; margin-right:2px;"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>starting</span>`;
     } else if (c.health_status === 'unhealthy') {
-      healthBadge = `<span class="badge badge-rose" style="font-size:0.7rem; margin-left:4px;" title="HealthCheck: Unhealthy">❌ unhealthy</span>`;
+      healthBadge = `<span class="badge badge-rose" style="font-size:0.7rem; margin-left:4px;" title="HealthCheck: Unhealthy"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px; margin-right:2px;"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>unhealthy</span>`;
     }
 
     let domainText = `<span class="text-muted">—</span>`;
@@ -1427,7 +1433,7 @@ function renderContainersTable(filterText = '') {
         </div>
       </td>
       <td>
-        <span class="badge badge-node">🖥️ ${escapeHtml(c.node_id || 'controller')}</span>
+        <span class="badge badge-node"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px; margin-right:3px;"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>${escapeHtml(c.node_id || 'controller')}</span>
       </td>
       <td><span style="font-family: var(--font-mono); font-size: 0.8rem;">${escapeHtml(c.image)}</span></td>
       <td>
@@ -1578,7 +1584,7 @@ function showProxyModal(domainKey) {
           ${proxy.locations.map(loc => `
             <div style="background: rgba(255,255,255,0.05); padding: 0.4rem 0.6rem; border-radius: 4px; font-size: 0.85rem; display: flex; justify-content: space-between; align-items: center;">
               <div><strong>${escapeHtml(loc.path)}</strong> &rarr; <code>${escapeHtml(loc.forward_host)}:${loc.forward_port}</code></div>
-              <div style="font-size: 0.75rem; color: var(--text-muted);">${loc.websocket ? '⚡ websocket' : ''}</div>
+              <div style="font-size: 0.75rem; color: var(--text-muted);">${loc.websocket ? '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px; margin-right:2px;"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>websocket' : ''}</div>
             </div>
           `).join('')}
         </div>
@@ -1589,7 +1595,7 @@ function showProxyModal(domainKey) {
       <div>
         <label class="text-muted" style="font-size: 0.75rem; text-transform: uppercase;">Load Balanced Upstream</label>
         <div style="margin-top: 0.25rem;">
-          <span class="badge badge-emerald">⚖️ ${proxy.upstream_replicas} Replicas</span>
+          <span class="badge badge-emerald"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px; margin-right:3px;"><path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"></path><path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"></path><path d="M7 21h10"></path><path d="M12 3v18"></path><path d="M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"></path></svg>${proxy.upstream_replicas} Replicas</span>
           <span class="badge badge-cyan">${escapeHtml(proxy.upstream_balancing || 'round_robin')}</span>
           <code style="margin-left: 0.5rem;">upstream ${escapeHtml(proxy.upstream_name)}</code>
         </div>
@@ -1971,11 +1977,11 @@ function updateNodeFilterDropdowns() {
   dropdowns.forEach(({ el, current }) => {
     if (!el) return;
     const existingVal = el.value || current || 'all';
-    el.innerHTML = '<option value="all">🌐 All Nodes</option>';
+    el.innerHTML = '<option value="all">All Nodes</option>';
     nodes.forEach(nodeId => {
       const opt = document.createElement('option');
       opt.value = nodeId;
-      opt.textContent = `🖥️ ${nodeId}`;
+      opt.textContent = nodeId;
       if (nodeId === existingVal) opt.selected = true;
       el.appendChild(opt);
     });
@@ -2030,8 +2036,8 @@ function renderClusterNodes(filterText = '') {
         : '<span class="badge badge-rose">Offline</span>';
 
       const roleBadge = node.is_controller 
-        ? '<span class="badge badge-cyan" style="font-size:0.72rem;">👑 Central Controller</span>' 
-        : '<span class="badge badge-violet" style="font-size:0.72rem;">📡 Remote Worker</span>';
+        ? '<span class="badge badge-cyan" style="font-size:0.72rem;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px; margin-right:3px;"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path></svg>Central Controller</span>' 
+        : '<span class="badge badge-violet" style="font-size:0.72rem;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px; margin-right:3px;"><circle cx="12" cy="12" r="2"></circle><path d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49m11.31-2.82a10 10 0 0 1 0 14.14m-14.14 0a10 10 0 0 1 0-14.14"></path></svg>Remote Worker</span>';
 
       let lastHeartbeatTime = 'Just now';
       if (node.last_heartbeat) {
@@ -2073,11 +2079,11 @@ function renderClusterNodes(filterText = '') {
 
         <div class="node-engines-list">
           <div class="node-engine-row">
-            <span class="text-muted">🐳 Docker Engine:</span>
+            <span class="text-muted"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px; margin-right:4px;"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path></svg>Docker Engine:</span>
             <span>${node.docker_connected ? `<span style="color:#10b981; font-weight:600;">Connected</span> <span style="font-size:0.75rem; color:var(--text-muted); font-family:var(--font-mono);">(${escapeHtml(node.docker_version || 'active')})</span>` : '<span style="color:#f43f5e;">Disconnected</span>'}</span>
           </div>
           <div class="node-engine-row" style="cursor: pointer;" onclick="openProxmoxModal('${escapeHtml(nodeId)}')" title="Configure Proxmox VE Discovery">
-            <span class="text-muted">⚡ Proxmox VE:</span>
+            <span class="text-muted"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px; margin-right:4px;"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>Proxmox VE:</span>
             <span>
               ${((node.pve_enabled || (node.overview && node.overview.pve_enabled)) && node.pve_connected)
                 ? `<span style="color:#10b981; font-weight:600;">Active</span> <span style="font-size:0.75rem; color:var(--text-muted);">(${node.pve_endpoint_count && node.pve_endpoint_count > 1 ? `${node.pve_endpoint_count} endpoints` : escapeHtml(node.pve_version || 'connected')})</span>` 
@@ -2087,7 +2093,7 @@ function renderClusterNodes(filterText = '') {
             </span>
           </div>
           <div class="node-engine-row">
-            <span class="text-muted">🐧 LXD / Incus:</span>
+            <span class="text-muted"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px; margin-right:4px;"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>LXD / Incus:</span>
             <span>${node.lxd_connected ? '<span style="color:#10b981; font-weight:600;">Active</span>' : '<span style="color:var(--text-muted);">Disabled</span>'}</span>
           </div>
         </div>
@@ -2105,7 +2111,7 @@ function renderClusterNodes(filterText = '') {
               </button>
             ` : ''}
             <button class="btn btn-secondary btn-sm" onclick="openProxmoxModal('${escapeHtml(nodeId)}')">
-              ⚡ Proxmox VE
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px; margin-right:3px;"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>Proxmox VE
             </button>
             <button class="btn btn-secondary btn-sm" onclick="filterContainersByNode('${escapeHtml(nodeId)}')">
               Inspect Containers
@@ -2721,7 +2727,7 @@ function checkPendingNodeConnection() {
       watcherDot.className = 'status-dot ping-dot connected';
     }
     if (watcherTitle) {
-      watcherTitle.innerHTML = `<span style="color:var(--accent-emerald);">🎉 Node Connected & Online!</span>`;
+      watcherTitle.innerHTML = `<span style="color:var(--accent-emerald);"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px; margin-right:4px;"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>Node Connected & Online!</span>`;
     }
     if (watcherSubtitle) {
       watcherSubtitle.textContent = `Worker '${match.node_id}' (${match.node_ip}) successfully registered! Discovered containers: ${match.container_count || 0}.`;
@@ -2980,7 +2986,7 @@ async function testProxmoxConnection() {
     if (resultDiv) {
       resultDiv.style.display = 'block';
       resultDiv.className = 'pve-test-error';
-      resultDiv.innerHTML = '⚠️ Please enter the Proxmox VE API URL (e.g. <code>https://192.168.1.100:8006</code>)';
+      resultDiv.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px; margin-right:4px;"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>Please enter the Proxmox VE API URL (e.g. <code>https://192.168.1.100:8006</code>)';
     }
     return;
   }
@@ -3013,27 +3019,29 @@ async function testProxmoxConnection() {
     const data = await res.json();
     if (resultDiv) {
       if (data.success) {
-        let contentHtml = `<div>✓ <strong>${escapeHtml(data.message || 'Connected successfully!')}</strong></div>`;
+        let contentHtml = `<div style="display:flex; align-items:center; gap:6px;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg><strong>${escapeHtml(data.message || 'Connected successfully!')}</strong></div>`;
 
         if (data.nodes && data.nodes.length > 0) {
           contentHtml += `<div style="margin-top: 0.45rem; font-size: 0.78rem; display: flex; align-items: center; gap: 0.45rem; flex-wrap: wrap;">
             <span style="color: var(--text-muted);">Quick-select node:</span>`;
           data.nodes.forEach(n => {
-            contentHtml += `<button type="button" class="badge badge-cyan" style="cursor: pointer; border: 1px solid rgba(56, 189, 248, 0.4); background: rgba(56, 189, 248, 0.15); padding: 3px 8px; border-radius: 4px;" onclick="document.getElementById('pve-modal-target-node').value='${escapeHtml(n)}'" title="Set target node to ${escapeHtml(n)}">${escapeHtml(n)} ↙</button>`;
+            contentHtml += `<button type="button" class="badge badge-cyan" style="cursor: pointer; border: 1px solid rgba(56, 189, 248, 0.4); background: rgba(56, 189, 248, 0.15); padding: 3px 8px; border-radius: 4px;" onclick="document.getElementById('pve-modal-target-node').value='${escapeHtml(n)}'" title="Set target node to ${escapeHtml(n)}">${escapeHtml(n)}</button>`;
           });
           contentHtml += `<button type="button" class="badge badge-secondary" style="cursor: pointer; border: 1px solid var(--border-color); background: rgba(255, 255, 255, 0.08); padding: 3px 8px; border-radius: 4px;" onclick="document.getElementById('pve-modal-target-node').value=''" title="Discover all cluster nodes">All Nodes (leave blank)</button>
           </div>`;
         }
 
         if (data.node_warning) {
-          contentHtml += `<div style="margin-top: 0.5rem; padding: 0.5rem 0.75rem; border-radius: 6px; background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.4); color: #fbbf24; font-size: 0.8rem; line-height: 1.4;">
-            ⚠️ <strong>Node Mismatch:</strong> ${escapeHtml(data.node_warning)}
+          contentHtml += `<div style="margin-top: 0.5rem; padding: 0.5rem 0.75rem; border-radius: 6px; background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.4); color: #fbbf24; font-size: 0.8rem; line-height: 1.4; display:flex; align-items:flex-start; gap:6px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0; margin-top:2px;"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+            <div><strong>Node Mismatch:</strong> ${escapeHtml(data.node_warning)}</div>
           </div>`;
         }
 
         if (data.warning) {
-          contentHtml += `<div style="margin-top: 0.5rem; padding: 0.5rem 0.75rem; border-radius: 6px; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); color: #f87171; font-size: 0.8rem; line-height: 1.4;">
-            ⚠️ <strong>Permissions Action Needed:</strong> ${escapeHtml(data.warning)}
+          contentHtml += `<div style="margin-top: 0.5rem; padding: 0.5rem 0.75rem; border-radius: 6px; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); color: #f87171; font-size: 0.8rem; line-height: 1.4; display:flex; align-items:flex-start; gap:6px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0; margin-top:2px;"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+            <div><strong>Permissions Action Needed:</strong> ${escapeHtml(data.warning)}</div>
           </div>`;
         }
 
@@ -3041,13 +3049,13 @@ async function testProxmoxConnection() {
         resultDiv.innerHTML = contentHtml;
       } else {
         resultDiv.className = 'pve-test-error';
-        resultDiv.innerHTML = `✗ <strong>Connection failed:</strong> ${escapeHtml(data.error || 'Unknown error')}`;
+        resultDiv.innerHTML = `<div style="display:flex; align-items:center; gap:6px;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg><strong>Connection failed:</strong> ${escapeHtml(data.error || 'Unknown error')}</div>`;
       }
     }
   } catch (err) {
     if (resultDiv) {
       resultDiv.className = 'pve-test-error';
-      resultDiv.innerHTML = `✗ <strong>Request failed:</strong> ${escapeHtml(err.message)}`;
+      resultDiv.innerHTML = `<div style="display:flex; align-items:center; gap:6px;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg><strong>Request failed:</strong> ${escapeHtml(err.message)}</div>`;
     }
   } finally {
     if (btn) btn.disabled = false;
@@ -3239,10 +3247,10 @@ function initProxmoxModal() {
       if (!secretInput) return;
       if (secretInput.type === 'password') {
         secretInput.type = 'text';
-        btnToggleSecret.textContent = '🔒';
+        btnToggleSecret.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
       } else {
         secretInput.type = 'password';
-        btnToggleSecret.textContent = '👁️';
+        btnToggleSecret.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>';
       }
     });
   }

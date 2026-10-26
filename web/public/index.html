@@ -341,7 +341,7 @@
                 <input type="text" id="proxies-search" placeholder="Search domain, container, IP..." />
               </div>
               <select id="proxies-node-filter" class="table-filter-select" title="Filter proxies by Cluster Node">
-                <option value="all">🌐 All Nodes</option>
+                <option value="all">All Nodes</option>
               </select>
             </div>
           </div>
@@ -405,7 +405,7 @@
                 <input type="text" id="streams-search" placeholder="Search port, target, protocol..." />
               </div>
               <select id="streams-node-filter" class="table-filter-select" title="Filter streams by Cluster Node">
-                <option value="all">🌐 All Nodes</option>
+                <option value="all">All Nodes</option>
               </select>
             </div>
           </div>
@@ -460,7 +460,7 @@
             </div>
             <div class="panel-actions">
               <select id="events-node-filter" class="table-filter-select" title="Filter logs by Cluster Node">
-                <option value="all">🌐 All Nodes</option>
+                <option value="all">All Nodes</option>
               </select>
               <div class="filter-group">
                 <button class="filter-btn active" data-filter="all">All</button>
@@ -502,7 +502,7 @@
                 <input type="text" id="containers-search" placeholder="Filter containers..." />
               </div>
               <select id="containers-node-filter" class="table-filter-select" title="Filter containers by Cluster Node">
-                <option value="all">🌐 All Nodes</option>
+                <option value="all">All Nodes</option>
               </select>
               <button class="btn btn-secondary btn-sm" id="btn-refresh-containers" onclick="fetchContainers(true)" title="Force Refresh Containers">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 4px;">
@@ -584,7 +584,13 @@
           </div>
 
           <div class="empty-state" id="cluster-empty" style="display: none; padding: 3rem 1.5rem; text-align: center;">
-            <div class="empty-icon" style="font-size: 3rem; margin-bottom: 1rem;">🌐</div>
+            <div class="empty-icon" style="margin-bottom: 1rem;">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color: var(--text-muted);">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="2" y1="12" x2="22" y2="12"></line>
+                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+              </svg>
+            </div>
             <h3 style="font-size: 1.25rem; font-weight: 700; color: var(--text-primary); margin-bottom: 0.5rem;">No Remote Worker Nodes Connected</h3>
             <p style="color: var(--text-muted); max-width: 550px; margin: 0 auto 1.5rem auto; line-height: 1.6;">
               Currently running in single-host controller mode. To connect a remote worker agent with its dashboard disabled, configure <code>DASHBOARD_ENABLED=false</code> and <code>MAIN_NODE_URL=http://&lt;this-node-ip&gt;:8080</code> on your worker machine.
@@ -1041,15 +1047,15 @@
             <!-- Category Chips Filter Bar -->
             <div class="docs-chips-container" id="docs-category-chips">
               <button class="docs-chip active" data-category="all" onclick="filterDocsCategory('all')">All Options (50+)</button>
-              <button class="docs-chip" data-category="docker" onclick="filterDocsCategory('docker')">🌐 Docker Ingress</button>
-              <button class="docs-chip" data-category="health" onclick="filterDocsCategory('health')">🛡️ Zero-502 Health</button>
-              <button class="docs-chip" data-category="middleware" onclick="filterDocsCategory('middleware')">🔧 Middlewares</button>
-              <button class="docs-chip" data-category="locations" onclick="filterDocsCategory('locations')">📍 Subpaths</button>
-              <button class="docs-chip" data-category="upstream" onclick="filterDocsCategory('upstream')">⚖️ Balancing</button>
-              <button class="docs-chip" data-category="streams" onclick="filterDocsCategory('streams')">🎮 L4 Streams</button>
-              <button class="docs-chip" data-category="pve" onclick="filterDocsCategory('pve')">⚡ Proxmox VE</button>
-              <button class="docs-chip" data-category="lxd" onclick="filterDocsCategory('lxd')">🐧 LXD / Incus</button>
-              <button class="docs-chip" data-category="env" onclick="filterDocsCategory('env')">⚙️ Environment Vars</button>
+              <button class="docs-chip" data-category="docker" onclick="filterDocsCategory('docker')"><svg class="docs-chip-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px; margin-right:4px;"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path></svg>Docker Ingress</button>
+              <button class="docs-chip" data-category="health" onclick="filterDocsCategory('health')"><svg class="docs-chip-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px; margin-right:4px;"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>Zero-502 Health</button>
+              <button class="docs-chip" data-category="middleware" onclick="filterDocsCategory('middleware')"><svg class="docs-chip-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px; margin-right:4px;"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>Middlewares</button>
+              <button class="docs-chip" data-category="locations" onclick="filterDocsCategory('locations')"><svg class="docs-chip-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px; margin-right:4px;"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>Subpaths</button>
+              <button class="docs-chip" data-category="upstream" onclick="filterDocsCategory('upstream')"><svg class="docs-chip-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px; margin-right:4px;"><path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"></path><path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"></path><path d="M7 21h10"></path><path d="M12 3v18"></path><path d="M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"></path></svg>Balancing</button>
+              <button class="docs-chip" data-category="streams" onclick="filterDocsCategory('streams')"><svg class="docs-chip-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px; margin-right:4px;"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>L4 Streams</button>
+              <button class="docs-chip" data-category="pve" onclick="filterDocsCategory('pve')"><svg class="docs-chip-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px; margin-right:4px;"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>Proxmox VE</button>
+              <button class="docs-chip" data-category="lxd" onclick="filterDocsCategory('lxd')"><svg class="docs-chip-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px; margin-right:4px;"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>LXD / Incus</button>
+              <button class="docs-chip" data-category="env" onclick="filterDocsCategory('env')"><svg class="docs-chip-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px; margin-right:4px;"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>Environment Vars</button>
             </div>
             
             <div class="table-responsive docs-table-wrap" id="docs-table-wrap">
@@ -1065,7 +1071,7 @@
                 <tbody>
                   <!-- 1. Core Ingress & SSL -->
                   <tr class="docs-category-header">
-                    <td colspan="4">🌐 Core Docker Ingress & SSL Labels</td>
+                    <td colspan="4"><div style="display:flex; align-items:center; gap:6px;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path></svg><span>Core Docker Ingress & SSL Labels</span></div></td>
                   </tr>
                   <tr>
                     <td><code>npm.frontend.domain</code><br><span class="text-muted" style="font-size:0.75rem;">alias: <code>npm.domain</code></span></td>
@@ -1154,7 +1160,7 @@
 
                   <!-- 2. Zero-502 HealthCheck Routing -->
                   <tr class="docs-category-header">
-                    <td colspan="4">🛡️ Zero-502 HealthCheck-Aware Routing</td>
+                    <td colspan="4"><div style="display:flex; align-items:center; gap:6px;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg><span>Zero-502 HealthCheck-Aware Routing</span></div></td>
                   </tr>
                   <tr>
                     <td><code>npm.healthcheck.enabled</code></td>
@@ -1183,7 +1189,7 @@
 
                   <!-- 3. Declarative Middlewares -->
                   <tr class="docs-category-header">
-                    <td colspan="4">🔧 Declarative Nginx Middlewares Engine</td>
+                    <td colspan="4"><div style="display:flex; align-items:center; gap:6px;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg><span>Declarative Nginx Middlewares Engine</span></div></td>
                   </tr>
                   <tr>
                     <td><code>npm.middleware.strip_prefix</code></td>
@@ -1224,7 +1230,7 @@
 
                   <!-- 4. Custom Locations & Subpaths -->
                   <tr class="docs-category-header">
-                    <td colspan="4">📍 Microservice Subpaths & Custom Locations</td>
+                    <td colspan="4"><div style="display:flex; align-items:center; gap:6px;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg><span>Microservice Subpaths & Custom Locations</span></div></td>
                   </tr>
                   <tr>
                     <td><code>npm.frontend.path</code></td>
@@ -1253,7 +1259,7 @@
 
                   <!-- 5. Upstream Load Balancing -->
                   <tr class="docs-category-header">
-                    <td colspan="4">⚖️ Dynamic Upstream Load Balancing</td>
+                    <td colspan="4"><div style="display:flex; align-items:center; gap:6px;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"></path><path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"></path><path d="M7 21h10"></path><path d="M12 3v18"></path><path d="M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"></path></svg><span>Dynamic Upstream Load Balancing</span></div></td>
                   </tr>
                   <tr>
                     <td><code>npm.upstream.balance</code></td>
@@ -1276,7 +1282,7 @@
 
                   <!-- 6. Layer 4 Streams -->
                   <tr class="docs-category-header">
-                    <td colspan="4">🎮 Layer 4 TCP / UDP Streams</td>
+                    <td colspan="4"><div style="display:flex; align-items:center; gap:6px;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg><span>Layer 4 TCP / UDP Streams</span></div></td>
                   </tr>
                   <tr>
                     <td><code>npm.stream.port</code><br><span class="text-muted" style="font-size:0.75rem;">alias: <code>npm.stream.incoming_port</code></span></td>
@@ -1305,7 +1311,7 @@
 
                   <!-- 7. Proxmox VE (PVE) LXC & VM Metadata -->
                   <tr class="docs-category-header">
-                    <td colspan="4">⚡ Proxmox VE (PVE) LXC &amp; VM Tags and Notes</td>
+                    <td colspan="4"><div style="display:flex; align-items:center; gap:6px;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg><span>Proxmox VE (PVE) LXC &amp; VM Tags and Notes</span></div></td>
                   </tr>
 
                   <!-- Ingress: Domain -->
@@ -1612,7 +1618,7 @@
 
                   <!-- 8. Canonical LXD / Incus Metadata -->
                   <tr class="docs-category-header">
-                    <td colspan="4">🐧 Canonical LXD / Incus User Metadata</td>
+                    <td colspan="4"><div style="display:flex; align-items:center; gap:6px;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg><span>Canonical LXD / Incus User Metadata</span></div></td>
                   </tr>
                   <tr>
                     <td><code>user.npm.domain</code></td>
@@ -1641,7 +1647,7 @@
 
                   <!-- 9. Environment Variables -->
                   <tr class="docs-category-header">
-                    <td colspan="4">⚙️ Daemon Environment Variables</td>
+                    <td colspan="4"><div style="display:flex; align-items:center; gap:6px;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg><span>Daemon Environment Variables</span></div></td>
                   </tr>
                   <tr>
                     <td><code>NPM_URL</code></td>
@@ -1744,22 +1750,22 @@
             <!-- Guide Sub-tabs -->
             <div class="docs-subtabs">
               <button class="docs-subtab-btn active" data-guide="docker-compose-guide">
-                🐳 Docker Compose
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px; margin-right:5px;"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path></svg>Docker Compose
               </button>
               <button class="docs-subtab-btn" data-guide="pve-guide">
-                ⚡ Proxmox VE
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px; margin-right:5px;"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>Proxmox VE
               </button>
               <button class="docs-subtab-btn" data-guide="lxd-guide">
-                🐧 LXD / Incus
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px; margin-right:5px;"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>LXD / Incus
               </button>
               <button class="docs-subtab-btn" data-guide="iac-guide">
-                📄 Static IaC File
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px; margin-right:5px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>Static IaC File
               </button>
               <button class="docs-subtab-btn" data-guide="standalone-guide">
-                🌐 Standalone Agent
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px; margin-right:5px;"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>Standalone Agent
               </button>
               <button class="docs-subtab-btn" data-guide="worker-guide">
-                📡 Remote Worker (Headless Push)
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px; margin-right:5px;"><circle cx="12" cy="12" r="2"></circle><path d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49m11.31-2.82a10 10 0 0 1 0 14.14m-14.14 0a10 10 0 0 1 0-14.14"></path></svg>Remote Worker (Headless Push)
               </button>
             </div>
 
@@ -1842,7 +1848,7 @@ volumes:
               </div>
 
               <button class="btn btn-secondary btn-sm" onclick="copyDocsGuideCode('docker-compose-guide', 'Docker Compose template copied to clipboard!')">
-                📋 Copy Compose Template
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px; margin-right:4px;"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>Copy Compose Template
               </button>
             </div>
 
@@ -1851,12 +1857,12 @@ volumes:
               <p class="mb-3 text-muted">Proxmox VE LXC container and QEMU Virtual Machine discovery using API Token authentication and GUI tags or Notes (Description):</p>
               
               <div class="info-alert mb-3">
-                <strong>⚡ Quick Tip:</strong> In Proxmox VE, you can configure discovery using either <strong>Tags</strong> (comma-separated list in Web GUI or CLI) OR <strong>Notes</strong> (multi-line YAML block in the container/VM Notes textarea). Both LXCs and QEMU VMs are fully supported!
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px; margin-right:4px;"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg><strong>Quick Tip:</strong> In Proxmox VE, you can configure discovery using either <strong>Tags</strong> (comma-separated list in Web GUI or CLI) OR <strong>Notes</strong> (multi-line YAML block in the container/VM Notes textarea). Both LXCs and QEMU VMs are fully supported!
               </div>
 
               <!-- Method 1: Web GUI & CLI Tags -->
               <h4 style="margin: 1rem 0 0.5rem; font-size: 0.95rem; color: var(--accent-cyan); display: flex; align-items: center; gap: 0.4rem;">
-                <span>🏷️ Method 1: Proxmox Web GUI Tags (Comma-Separated)</span>
+                <div style="display:flex; align-items:center; gap:6px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path><line x1="7" y1="7" x2="7.01" y2="7"></line></svg><span>Method 1: Proxmox Web GUI Tags (Comma-Separated)</span></div>
               </h4>
               <p class="text-muted" style="font-size: 0.82rem; margin-bottom: 0.5rem;">
                 In the Proxmox Web GUI, select your LXC or VM, click <strong>Tags</strong> in the top header, and paste comma-separated key=value pairs:
@@ -1880,7 +1886,7 @@ qm set 200 -tags "npm.domain=homeassistant.homelab.arpa,npm.port=8123,npm.ssl=tr
 
               <!-- Method 2: Notes / Description (YAML) -->
               <h4 style="margin: 1.25rem 0 0.5rem; font-size: 0.95rem; color: #10b981; display: flex; align-items: center; gap: 0.4rem;">
-                <span>📝 Method 2: Proxmox Notes / Description Textarea (Full YAML Block)</span>
+                <div style="display:flex; align-items:center; gap:6px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg><span>Method 2: Proxmox Notes / Description Textarea (Full YAML Block)</span></div>
               </h4>
               <p class="text-muted" style="font-size: 0.82rem; margin-bottom: 0.5rem;">
                 In the Proxmox Web GUI, select your LXC or VM, click <strong>Notes</strong> (or Summary &rarr; Description), and paste a complete YAML configuration block:
@@ -1919,10 +1925,10 @@ npm.access_list_id: 1                # Optional NPM Access List ID (Basic Auth /
 
               <!-- Method 3: Environment Setup for Docker -->
               <h4 style="margin: 1.25rem 0 0.5rem; font-size: 0.95rem; color: #f59e0b; display: flex; align-items: center; gap: 0.4rem;">
-                <span>⚙️ Connecting NPM Auto-Discovery to Proxmox VE</span>
+                <div style="display:flex; align-items:center; gap:6px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg><span>Connecting NPM Auto-Discovery to Proxmox VE</span></div>
               </h4>
               <p class="text-muted" style="font-size: 0.82rem; margin-bottom: 0.5rem;">
-                You can configure endpoints directly via the Web Dashboard (<strong>⚡ Proxmox Configuration Modal</strong>) or via environment variables:
+                You can configure endpoints directly via the Web Dashboard (<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px; margin-right:3px;"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg><strong>Proxmox Configuration Modal</strong>) or via environment variables:
               </p>
               <div class="code-snippet-wrap mb-3">
                 <pre><code class="language-bash"># Environment variables (or configure via Dashboard modal):
@@ -1937,11 +1943,11 @@ PVE_ALLOWED_SUBNETS="192.168.1.0/24"</code></pre>
               </div>
 
               <div class="info-alert mb-3" style="background: rgba(245, 158, 11, 0.12); border-color: rgba(245, 158, 11, 0.35); color: #fbbf24;">
-                <strong>⚠️ Proxmox Privilege Separation Note:</strong> When creating your API Token under <em>Datacenter &rarr; Permissions &rarr; API Tokens</em>, uncheck <strong>Privilege Separation</strong> (so the token inherits root permissions), or add an explicit permission at <em>Datacenter &rarr; Permissions &rarr; Add &rarr; API Token Permission</em> (Path: <code>/</code>, Role: <code>PVEAuditor</code> or <code>Administrator</code>).
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px; margin-right:4px;"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg><strong>Proxmox Privilege Separation Note:</strong> When creating your API Token under <em>Datacenter &rarr; Permissions &rarr; API Tokens</em>, uncheck <strong>Privilege Separation</strong> (so the token inherits root permissions), or add an explicit permission at <em>Datacenter &rarr; Permissions &rarr; Add &rarr; API Token Permission</em> (Path: <code>/</code>, Role: <code>PVEAuditor</code> or <code>Administrator</code>).
               </div>
 
               <button class="btn btn-secondary btn-sm" onclick="copyDocsGuideCode('pve-guide', 'Proxmox setup template copied to clipboard!')">
-                📋 Copy Proxmox YAML Notes Template
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px; margin-right:4px;"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>Copy Proxmox YAML Notes Template
               </button>
             </div>
 
@@ -1974,7 +1980,7 @@ incus config set my-db user.npm.stream.tcp "true"</code></pre>
               </div>
 
               <button class="btn btn-secondary btn-sm" onclick="copyDocsGuideCode('lxd-guide', 'LXD setup snippet copied to clipboard!')">
-                📋 Copy LXD / Incus Snippet
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px; margin-right:4px;"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>Copy LXD / Incus Snippet
               </button>
             </div>
 
@@ -2015,7 +2021,7 @@ streams:
               </div>
 
               <button class="btn btn-secondary btn-sm" onclick="copyDocsGuideCode('iac-guide', 'IaC manifest template copied to clipboard!')">
-                📋 Copy IaC Manifest Template
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px; margin-right:4px;"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>Copy IaC Manifest Template
               </button>
             </div>
 
@@ -2041,7 +2047,7 @@ services:
               </div>
 
               <button class="btn btn-secondary btn-sm" onclick="copyDocsGuideCode('standalone-guide', 'Standalone agent template copied to clipboard!')">
-                📋 Copy Standalone Template
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px; margin-right:4px;"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>Copy Standalone Template
               </button>
             </div>
 
@@ -2100,12 +2106,12 @@ PUSH_INTERVAL=15s</code></pre>
               </div>
 
               <button class="btn btn-secondary btn-sm" onclick="copyDocsGuideCode('worker-guide', 'Remote worker headless template copied to clipboard!')">
-                📋 Copy Remote Worker Template
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px; margin-right:4px;"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>Copy Remote Worker Template
               </button>
             </div>
 
             <div class="info-alert mt-4">
-              <strong>💡 Pro Tip:</strong> In v2.0, all providers (Docker, Proxmox VE, Canonical LXD/Incus, and static IaC manifests) run simultaneously under the same syncer without collision, unified under your single Nginx Proxy Manager instance!
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px; margin-right:4px;"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg><strong>Pro Tip:</strong> In v2.0, all providers (Docker, Proxmox VE, Canonical LXD/Incus, and static IaC manifests) run simultaneously under the same syncer without collision, unified under your single Nginx Proxy Manager instance!
             </div>
             </div> <!-- end docs-guides-body -->
           </div>
@@ -2150,7 +2156,7 @@ PUSH_INTERVAL=15s</code></pre>
     <div class="modal-card modal-card-lg glass-panel">
       <div class="modal-header">
         <div style="display: flex; align-items: center; gap: 0.65rem;">
-          <span style="font-size: 1.35rem;">🖥️</span>
+          <div class="metric-icon-wrap" style="background: rgba(167, 139, 250, 0.15); color: #a78bfa; width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg></div>
           <div>
             <h3 style="margin: 0; line-height: 1.2;">Add Remote Worker Node</h3>
             <p style="margin: 0; font-size: 0.78rem; color: var(--text-muted); font-weight: normal;">Generate ready-to-deploy agent configuration for remote Docker hosts</p>
@@ -2175,7 +2181,7 @@ PUSH_INTERVAL=15s</code></pre>
             </label>
             <div class="input-with-button">
               <input type="text" id="node-agent-id" class="form-input" placeholder="e.g. worker-node-02" />
-              <button type="button" class="btn btn-secondary btn-sm" id="btn-random-node-id" title="Generate random node name">🎲 Random</button>
+              <button type="button" class="btn btn-secondary btn-sm" id="btn-random-node-id" title="Generate random node name"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px; margin-right:3px;"><polyline points="16 3 21 3 21 8"></polyline><line x1="4" y1="20" x2="21" y2="3"></line><polyline points="21 16 21 21 16 21"></polyline><line x1="15" y1="15" x2="21" y2="21"></line><line x1="4" y1="4" x2="9" y2="9"></line></svg>Random</button>
             </div>
             <span class="form-hint">Unique identifier in the cluster to prevent multi-host routing collisions.</span>
           </div>
@@ -2210,7 +2216,7 @@ PUSH_INTERVAL=15s</code></pre>
                 </label>
                 <div class="input-with-button">
                   <input type="text" id="node-cluster-token" class="form-input" placeholder="Cluster secret token..." />
-                  <button type="button" class="btn btn-secondary btn-sm" id="btn-generate-cluster-token" title="Generate 32-byte secret">🔑 New</button>
+                  <button type="button" class="btn btn-secondary btn-sm" id="btn-generate-cluster-token" title="Generate 32-byte secret"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px; margin-right:3px;"><path d="M21 2l-2 2m-1.5 1.5L16 7l-1.5-1.5L13 7l-1 1-2-2-6 6a4 4 0 1 0 5.66 5.66l6-6"></path></svg>New</button>
                 </div>
                 <span class="form-hint">Shared authentication secret matching the controller node's CLUSTER_TOKEN.</span>
               </div>
@@ -2298,10 +2304,10 @@ PUSH_INTERVAL=15s</code></pre>
         <!-- Generated Configuration Output Area -->
         <div id="agent-config-output" style="display: none;">
           <div class="config-tabs">
-            <button class="config-tab-btn active" data-cfg-tab="run">🚀 Docker Run (One-Liner)</button>
-            <button class="config-tab-btn" data-cfg-tab="compose">📦 docker-compose.worker.yml</button>
-            <button class="config-tab-btn" data-cfg-tab="env">⚙️ .env Configuration</button>
-            <button class="config-tab-btn" data-cfg-tab="whoami">🧪 Test Service (whoami)</button>
+            <button class="config-tab-btn active" data-cfg-tab="run"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px; margin-right:4px;"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"></path><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"></path></svg>Docker Run (One-Liner)</button>
+            <button class="config-tab-btn" data-cfg-tab="compose"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px; margin-right:4px;"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>docker-compose.worker.yml</button>
+            <button class="config-tab-btn" data-cfg-tab="env"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px; margin-right:4px;"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>.env Configuration</button>
+            <button class="config-tab-btn" data-cfg-tab="whoami"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px; margin-right:4px;"><path d="M10 2v7.527a2 2 0 0 1-.211.896L4.72 20.55a1 1 0 0 0 .9 1.45h12.76a1 1 0 0 0 .9-1.45l-5.069-10.127A2 2 0 0 1 14 9.527V2"></path><path d="M8.5 2h7"></path><path d="M7 16h10"></path></svg>Test Service (whoami)</button>
           </div>
 
           <div class="config-code-box">
@@ -2354,7 +2360,7 @@ PUSH_INTERVAL=15s</code></pre>
     <div class="modal-card modal-card-lg glass-panel">
       <div class="modal-header">
         <div style="display: flex; align-items: center; gap: 0.65rem;">
-          <span style="font-size: 1.35rem;">⚡</span>
+          <div class="metric-icon-wrap" style="background: rgba(255, 111, 0, 0.15); color: #ff8f00; width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg></div>
           <div>
             <h3 style="margin: 0; line-height: 1.2;">Proxmox LXC &amp; VM Discovery Configuration</h3>
             <p style="margin: 0; font-size: 0.78rem; color: var(--text-muted); font-weight: normal;">
@@ -2437,7 +2443,7 @@ PUSH_INTERVAL=15s</code></pre>
                 </label>
                 <div class="input-with-button">
                   <input type="password" id="pve-modal-token-secret" class="form-input" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" />
-                  <button type="button" class="btn btn-secondary btn-sm" id="btn-toggle-pve-secret" title="Show/Hide secret">👁️</button>
+                  <button type="button" class="btn btn-secondary btn-sm" id="btn-toggle-pve-secret" title="Show/Hide secret"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="10" r="3"></circle></svg></button>
                 </div>
                 <span class="form-hint" id="pve-modal-secret-hint">Secret UUID shown only once when creating token in Proxmox.</span>
               </div>
@@ -2476,7 +2482,7 @@ PUSH_INTERVAL=15s</code></pre>
                 <span id="btn-test-pve-conn-text">Test Connection</span>
               </button>
               <button type="button" class="btn btn-danger btn-sm" id="btn-delete-pve-endpoint" onclick="deleteCurrentPveEndpoint()" style="display: none; align-items: center; gap: 0.35rem; font-size: 0.78rem;">
-                🗑️ Remove Endpoint
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px; margin-right:3px;"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>Remove Endpoint
               </button>
             </div>
             
