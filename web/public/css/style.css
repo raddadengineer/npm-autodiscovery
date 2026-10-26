@@ -3941,6 +3941,48 @@ svg.spin {
   flex-wrap: wrap;
 }
 
+.btn-toggle-inspector {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.btn-toggle-inspector:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+  border-color: var(--border-color);
+}
+
+.btn-toggle-inspector .chevron-icon {
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.npm-requests-card.is-collapsed .btn-toggle-inspector .chevron-icon {
+  transform: rotate(-90deg);
+}
+
+.npm-requests-body-collapsible {
+  transition: max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.25s ease;
+  overflow: hidden;
+}
+
+.npm-requests-card.is-collapsed .npm-requests-body-collapsible {
+  display: none;
+}
+
+.npm-requests-card.is-collapsed .npm-requests-card-header {
+  margin-bottom: 0;
+}
+
 .npm-inspector-title-row h3 {
   font-size: 1.15rem;
   font-weight: 700;

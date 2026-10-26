@@ -84,11 +84,11 @@
           <span class="status-label">LXD/Incus:</span>
           <span class="status-val" id="lxd-status-text">Disabled</span>
         </div>
-        <a href="/metrics" target="_blank" class="status-pill metrics-link-pill" title="Prometheus Observability Metrics Endpoint" style="text-decoration:none; color:inherit; cursor:pointer;">
+        <a href="/metrics" target="_blank" class="status-pill metrics-link-pill" title="Prometheus / OpenTelemetry Metrics Scrape Endpoint" style="text-decoration:none; color:inherit; cursor:pointer;">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#00f2fe" stroke-width="2">
             <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
           </svg>
-          <span class="status-label">Prometheus:</span>
+          <span class="status-label">Scrape:</span>
           <span class="status-val" style="color:#00f2fe;">/metrics</span>
         </a>
       </div>
@@ -707,7 +707,13 @@
               </div>
               <div id="npm-chart-drilldown-tag" class="npm-chart-filter-tag" style="display: none;">
                 <span id="npm-chart-drilldown-text">5xx</span>
-                <button type="button" class="btn-clear-drilldown" onclick="clearStatusDrillDown()" title="Reset chart view">✕ Reset</button>
+                <button type="button" class="btn-clear-drilldown" onclick="clearStatusDrillDown()" title="Reset chart view">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                  </svg>
+                  <span>Reset</span>
+                </button>
               </div>
             </div>
 
@@ -762,9 +768,20 @@
                 <p class="npm-section-subtitle">How the responses split up, and how each class and code ran over time.</p>
               </div>
               <div id="npm-drilldown-active-wrap" class="npm-drilldown-badge" style="display: none;">
-                <span class="npm-drilldown-icon">🔍</span>
+                <span class="npm-drilldown-icon">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                  </svg>
+                </span>
                 <span>Filtered by: <strong id="npm-drilldown-label">5xx</strong></span>
-                <button type="button" class="btn-clear-drilldown" id="btn-clear-drilldown" title="Clear filter" onclick="clearStatusDrillDown()">✕ Clear</button>
+                <button type="button" class="btn-clear-drilldown" id="btn-clear-drilldown" title="Clear filter" onclick="clearStatusDrillDown()">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                  </svg>
+                  <span>Clear</span>
+                </button>
               </div>
             </div>
 
@@ -779,19 +796,52 @@
 
               <div class="npm-stacked-legend" id="npm-status-stacked-legend">
                 <div class="npm-legend-item">
-                  <div class="npm-legend-title"><span class="npm-cls-icon cls-2xx">✓</span> 2xx · Success</div>
+                  <div class="npm-legend-title">
+                    <span class="npm-cls-icon cls-2xx">
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="20 6 9 17 4 12"></polyline>
+                      </svg>
+                    </span>
+                    2xx · Success
+                  </div>
                   <div class="npm-legend-val" id="npm-legend-2xx">0 · 0 %</div>
                 </div>
                 <div class="npm-legend-item">
-                  <div class="npm-legend-title"><span class="npm-cls-icon cls-3xx">↗</span> 3xx · Redirect</div>
+                  <div class="npm-legend-title">
+                    <span class="npm-cls-icon cls-3xx">
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="7" y1="17" x2="17" y2="7"></line>
+                        <polyline points="7 7 17 7 17 17"></polyline>
+                      </svg>
+                    </span>
+                    3xx · Redirect
+                  </div>
                   <div class="npm-legend-val" id="npm-legend-3xx">0 · 0 %</div>
                 </div>
                 <div class="npm-legend-item">
-                  <div class="npm-legend-title"><span class="npm-cls-icon cls-4xx">⚠</span> 4xx · Client error</div>
+                  <div class="npm-legend-title">
+                    <span class="npm-cls-icon cls-4xx">
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path>
+                        <line x1="12" y1="9" x2="12" y2="13"></line>
+                        <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                      </svg>
+                    </span>
+                    4xx · Client error
+                  </div>
                   <div class="npm-legend-val" id="npm-legend-4xx">0 · 0 %</div>
                 </div>
                 <div class="npm-legend-item">
-                  <div class="npm-legend-title"><span class="npm-cls-icon cls-5xx">⊗</span> 5xx · Server error</div>
+                  <div class="npm-legend-title">
+                    <span class="npm-cls-icon cls-5xx">
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <line x1="15" y1="9" x2="9" y2="15"></line>
+                        <line x1="9" y1="9" x2="15" y2="15"></line>
+                      </svg>
+                    </span>
+                    5xx · Server error
+                  </div>
                   <div class="npm-legend-val" id="npm-legend-5xx">0 · 0 %</div>
                 </div>
               </div>
@@ -841,6 +891,11 @@
             <div class="npm-requests-card-header">
               <div>
                 <div class="npm-inspector-title-row">
+                  <button type="button" class="btn-toggle-inspector" id="btn-toggle-requests-inspector" onclick="toggleRequestsInspector()" title="Collapse / Expand Request Inspector" aria-expanded="true">
+                    <svg class="chevron-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                      <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                  </button>
                   <h3>Request Logs & Error Inspector</h3>
                   <span class="npm-live-indicator"><span class="pulse-dot"></span> History Recorded</span>
                   <span class="npm-counter-pill" id="npm-requests-counter-badge">0 requests</span>
@@ -866,8 +921,9 @@
               </div>
             </div>
 
-            <div class="table-responsive npm-requests-table-wrap">
-              <table class="data-table npm-requests-table">
+            <div class="npm-requests-body-collapsible" id="npm-requests-body-collapsible">
+              <div class="table-responsive npm-requests-table-wrap">
+                <table class="data-table npm-requests-table">
                 <thead>
                   <tr>
                     <th style="width: 110px;">Time</th>
@@ -886,8 +942,9 @@
               </table>
             </div>
           </div>
+        </div>
 
-          <!-- Hosts Table Card -->
+        <!-- Hosts Table Card -->
           <div class="npm-hosts-card glass-panel">
             <div class="npm-hosts-card-header">
               <div>

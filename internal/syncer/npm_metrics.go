@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -20,6 +21,22 @@ import (
 
 	"github.com/raddadengineer/npm-autodiscovery/internal/npm"
 )
+
+// detectLocalOutboundIP attempts to discover the host's actual LAN/outbound IP address
+// rather than defaulting to loopback 127.0.0.1.
+func detectLocalOutboundIP() string {
+	conn, err := net.Dial("udp", "1.1.1.1:80")
+	if err == nil {
+		defer conn.Close()
+		if localAddr, ok := conn.LocalAddr().(*net.UDPAddr); ok && localAddr.IP != nil {
+			ipStr := localAddr.IP.String()
+			if ipStr != "" && ipStr != "127.0.0.1" && ipStr != "::1" {
+				return ipStr
+			}
+		}
+	}
+	return "127.0.0.1"
+}
 
 const (
 	maxMetricSamples = 4096
@@ -688,6 +705,13 @@ func (s *Syncer) ProbeNPMHostsNow(ctx context.Context) int {
 	wg.Wait()
 
 	s.npmMetrics.mu.Lock()
+	probeClientIP := "127.0.0.1"
+	if s.cfg != nil && s.cfg.HostIP != "" {
+		probeClientIP = s.cfg.HostIP
+	} else if ip := detectLocalOutboundIP(); ip != "" {
+		probeClientIP = ip
+	}
+
 	for _, r := range results {
 		if r.primary.Domain == "" {
 			continue
@@ -706,7 +730,7 @@ func (s *Syncer) ProbeNPMHostsNow(ctx context.Context) int {
 			StatusCode: r.primary.StatusCode,
 			LatencyMs:  r.primary.LatencyMs,
 			Bytes:      r.primary.Bytes,
-			ClientIP:   "127.0.0.1",
+			ClientIP:   probeClientIP,
 			UserAgent:  "NPM-AutoDiscovery-Probe/2.2",
 			Upstream:   r.targetURL,
 			Error:      r.errDetails,
@@ -726,10 +750,10 @@ func (s *Syncer) ProbeNPMHostsNow(ctx context.Context) int {
 var (
 	// Matches NPM proxy log format:
 	// [25/Oct/2026:10:15:23 +0000] - 200 200 - GET https whoami.local "/" [Client 172.18.0.1] [Length 412] ...
-	npmLogRegex = regexp.MustCompile(`^\[([^\]]+)\]\s+\S+\s+\S+\s+(\d{3})\s+-\s+\S+\s+\S+\s+(\S+)\s+"[^"]*"\s+\[Client\s+[^\]]+\]\s+\[Length\s+(\d+)\]`)
+	npmLogRegex = regexp.MustCompile(`^\[([^\]]+)\]\s+\S+\s+\S+\s+(\d{3})\s+-\s+(\S+)\s+\S+\s+(\S+)\s+"([^"]*)"\s+\[Client\s+([^\]]+)\]\s+\[Length\s+(\d+)\](?:\s+\[(?:[^\]]*)\])?(?:\s+\[Sent-to\s+([^\]]+)\])?`)
 	// Matches standard Nginx combined log format:
 	// 172.18.0.1 - - [25/Oct/2026:10:15:23 +0000] "GET / HTTP/1.1" 200 412 "-" "Mozilla..."
-	combinedLogRegex = regexp.MustCompile(`^\S+\s+\S+\s+\S+\s+\[([^\]]+)\]\s+"[^"]*"\s+(\d{3})\s+(\d+)`)
+	combinedLogRegex = regexp.MustCompile(`^(\S+)\s+\S+\s+\S+\s+\[([^\]]+)\]\s+"(\S+)\s+([^\s"]+)[^"]*"\s+(\d{3})\s+(\d+)`)
 	proxyHostIDRegex = regexp.MustCompile(`proxy-host-(\d+)_access\.log`)
 )
 
@@ -765,6 +789,7 @@ func (s *Syncer) parseNPMAccessLogsIfAvailable(hosts []npmHostUnified, cutoff ti
 	}
 
 	var parsed []MetricSample
+	var parsedEvents []NPMRequestEvent
 	foundLogFile := false
 
 	for _, entry := range entries {
@@ -787,17 +812,28 @@ func (s *Syncer) parseNPMAccessLogsIfAvailable(hosts []npmHostUnified, cutoff ti
 		scanner := bufio.NewScanner(f)
 		for scanner.Scan() {
 			line := scanner.Text()
-			if m := npmLogRegex.FindStringSubmatch(line); len(m) == 5 {
+			if m := npmLogRegex.FindStringSubmatch(line); len(m) >= 8 {
 				ts, err := time.Parse("02/Jan/2006:15:04:05 -0700", m[1])
 				if err != nil || ts.Before(cutoff) {
 					continue
 				}
 				code, _ := strconv.Atoi(m[2])
-				domain := strings.TrimSpace(m[3])
+				method := strings.ToUpper(strings.TrimSpace(m[3]))
+				domain := strings.TrimSpace(m[4])
 				if domain == "" || domain == "-" {
 					domain = defaultDomain
 				}
-				bytesSent, _ := strconv.ParseInt(m[4], 10, 64)
+				reqPath := strings.TrimSpace(m[5])
+				if reqPath == "" {
+					reqPath = "/"
+				}
+				clientIP := strings.TrimSpace(m[6])
+				bytesSent, _ := strconv.ParseInt(m[7], 10, 64)
+				upstreamAddr := ""
+				if len(m) >= 9 && m[8] != "" {
+					upstreamAddr = strings.TrimSpace(m[8])
+				}
+
 				parsed = append(parsed, MetricSample{
 					Timestamp:  ts,
 					Domain:     domain,
@@ -807,13 +843,41 @@ func (s *Syncer) parseNPMAccessLogsIfAvailable(hosts []npmHostUnified, cutoff ti
 					Bytes:      bytesSent,
 					Count:      1,
 				})
-			} else if m := combinedLogRegex.FindStringSubmatch(line); len(m) == 4 && defaultDomain != "" {
-				ts, err := time.Parse("02/Jan/2006:15:04:05 -0700", m[1])
+
+				errDetails := ""
+				if code >= 500 {
+					errDetails = fmt.Sprintf("HTTP %d (%s) - NPM upstream failure", code, statusTitle(code))
+				} else if code >= 400 {
+					errDetails = fmt.Sprintf("HTTP %d (%s) - Client request rejected", code, statusTitle(code))
+				}
+
+				parsedEvents = append(parsedEvents, NPMRequestEvent{
+					ID:         fmt.Sprintf("log-%d-%d", ts.UnixNano(), hostID),
+					Timestamp:  ts,
+					Domain:     domain,
+					NPMHostID:  hostID,
+					Method:     method,
+					Path:       reqPath,
+					StatusCode: code,
+					LatencyMs:  15,
+					Bytes:      bytesSent,
+					ClientIP:   clientIP,
+					UserAgent:  "Nginx-Proxy-Manager",
+					Upstream:   upstreamAddr,
+					Error:      errDetails,
+					IsError:    code >= 400,
+				})
+			} else if m := combinedLogRegex.FindStringSubmatch(line); len(m) >= 7 && defaultDomain != "" {
+				ts, err := time.Parse("02/Jan/2006:15:04:05 -0700", m[2])
 				if err != nil || ts.Before(cutoff) {
 					continue
 				}
-				code, _ := strconv.Atoi(m[2])
-				bytesSent, _ := strconv.ParseInt(m[3], 10, 64)
+				clientIP := strings.TrimSpace(m[1])
+				method := strings.ToUpper(strings.TrimSpace(m[3]))
+				reqPath := strings.TrimSpace(m[4])
+				code, _ := strconv.Atoi(m[5])
+				bytesSent, _ := strconv.ParseInt(m[6], 10, 64)
+
 				parsed = append(parsed, MetricSample{
 					Timestamp:  ts,
 					Domain:     defaultDomain,
@@ -823,6 +887,30 @@ func (s *Syncer) parseNPMAccessLogsIfAvailable(hosts []npmHostUnified, cutoff ti
 					Bytes:      bytesSent,
 					Count:      1,
 				})
+
+				errDetails := ""
+				if code >= 500 {
+					errDetails = fmt.Sprintf("HTTP %d (%s) - NPM upstream failure", code, statusTitle(code))
+				} else if code >= 400 {
+					errDetails = fmt.Sprintf("HTTP %d (%s) - Client request rejected", code, statusTitle(code))
+				}
+
+				parsedEvents = append(parsedEvents, NPMRequestEvent{
+					ID:         fmt.Sprintf("log-%d-%d", ts.UnixNano(), hostID),
+					Timestamp:  ts,
+					Domain:     defaultDomain,
+					NPMHostID:  hostID,
+					Method:     method,
+					Path:       reqPath,
+					StatusCode: code,
+					LatencyMs:  15,
+					Bytes:      bytesSent,
+					ClientIP:   clientIP,
+					UserAgent:  "Nginx-Proxy-Manager",
+					Upstream:   "",
+					Error:      errDetails,
+					IsError:    code >= 400,
+				})
 			}
 		}
 		f.Close()
@@ -831,6 +919,17 @@ func (s *Syncer) parseNPMAccessLogsIfAvailable(hosts []npmHostUnified, cutoff ti
 	if !foundLogFile || len(parsed) == 0 {
 		return nil, false
 	}
+
+	// Ingest any parsed real client access log events into npmMetrics.events state
+	if len(parsedEvents) > 0 && s.npmMetrics != nil {
+		s.npmMetrics.mu.Lock()
+		for _, ev := range parsedEvents {
+			s.npmMetrics.recordEventLocked(ev)
+		}
+		s.npmMetrics.saveToDiskLocked()
+		s.npmMetrics.mu.Unlock()
+	}
+
 	return parsed, true
 }
 

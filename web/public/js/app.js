@@ -3724,19 +3724,52 @@ function renderNPMMetricsDashboard(data) {
   if (legendContainer) {
     legendContainer.innerHTML = `
       <div class="npm-legend-item ${currentMetricsClassFilter === '2xx' ? 'selected-legend' : (currentMetricsClassFilter ? 'dimmed' : '')}" onclick="filterByStatusClass('2xx')" title="Click to filter by 2xx Success">
-        <div class="npm-legend-title"><span class="npm-cls-icon cls-2xx">✓</span> 2xx · Success</div>
+        <div class="npm-legend-title">
+          <span class="npm-cls-icon cls-2xx">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+          </span>
+          2xx · Success
+        </div>
         <div class="npm-legend-val" id="npm-legend-2xx">${c2xx.count.toLocaleString()} · ${c2xx.percent} %</div>
       </div>
       <div class="npm-legend-item ${currentMetricsClassFilter === '3xx' ? 'selected-legend' : (currentMetricsClassFilter ? 'dimmed' : '')}" onclick="filterByStatusClass('3xx')" title="Click to filter by 3xx Redirect">
-        <div class="npm-legend-title"><span class="npm-cls-icon cls-3xx">↗</span> 3xx · Redirect</div>
+        <div class="npm-legend-title">
+          <span class="npm-cls-icon cls-3xx">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="7" y1="17" x2="17" y2="7"></line>
+              <polyline points="7 7 17 7 17 17"></polyline>
+            </svg>
+          </span>
+          3xx · Redirect
+        </div>
         <div class="npm-legend-val" id="npm-legend-3xx">${c3xx.count.toLocaleString()} · ${c3xx.percent} %</div>
       </div>
       <div class="npm-legend-item ${currentMetricsClassFilter === '4xx' ? 'selected-legend' : (currentMetricsClassFilter ? 'dimmed' : '')}" onclick="filterByStatusClass('4xx')" title="Click to filter by 4xx Client error">
-        <div class="npm-legend-title"><span class="npm-cls-icon cls-4xx">⚠</span> 4xx · Client error</div>
+        <div class="npm-legend-title">
+          <span class="npm-cls-icon cls-4xx">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path>
+              <line x1="12" y1="9" x2="12" y2="13"></line>
+              <line x1="12" y1="17" x2="12.01" y2="17"></line>
+            </svg>
+          </span>
+          4xx · Client error
+        </div>
         <div class="npm-legend-val" id="npm-legend-4xx">${c4xx.count.toLocaleString()} · ${c4xx.percent} %</div>
       </div>
       <div class="npm-legend-item ${currentMetricsClassFilter === '5xx' ? 'selected-legend' : (currentMetricsClassFilter ? 'dimmed' : '')}" onclick="filterByStatusClass('5xx')" title="Click to filter by 5xx Server error">
-        <div class="npm-legend-title"><span class="npm-cls-icon cls-5xx">⊗</span> 5xx · Server error</div>
+        <div class="npm-legend-title">
+          <span class="npm-cls-icon cls-5xx">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="15" y1="9" x2="9" y2="15"></line>
+              <line x1="9" y1="9" x2="15" y2="15"></line>
+            </svg>
+          </span>
+          5xx · Server error
+        </div>
         <div class="npm-legend-val" id="npm-legend-5xx">${c5xx.count.toLocaleString()} · ${c5xx.percent} %</div>
       </div>
     `;
@@ -3746,10 +3779,10 @@ function renderNPMMetricsDashboard(data) {
   const classGrid = document.getElementById('npm-class-cards-grid');
   if (classGrid) {
     const classConfigs = [
-      { key: '2xx', title: '2xx · Success', icon: '✓', cls: '2xx', data: c2xx },
-      { key: '3xx', title: '3xx · Redirect', icon: '↗', cls: '3xx', data: c3xx },
-      { key: '4xx', title: '4xx · Client error', icon: '⚠', cls: '4xx', data: c4xx },
-      { key: '5xx', title: '5xx · Server error', icon: '⊗', cls: '5xx', data: c5xx }
+      { key: '2xx', title: '2xx · Success', icon: '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>', cls: '2xx', data: c2xx },
+      { key: '3xx', title: '3xx · Redirect', icon: '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="17" x2="17" y2="7"></line><polyline points="7 7 17 7 17 17"></polyline></svg>', cls: '3xx', data: c3xx },
+      { key: '4xx', title: '4xx · Client error', icon: '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>', cls: '4xx', data: c4xx },
+      { key: '5xx', title: '5xx · Server error', icon: '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>', cls: '5xx', data: c5xx }
     ];
 
     let cHtml = '';
@@ -4013,6 +4046,21 @@ window.formatBytes = formatBytes;
 window.filterRequestEvents = filterRequestEvents;
 window.showRequestDetailModal = showRequestDetailModal;
 window.closeRequestDetailModal = closeRequestDetailModal;
+window.toggleRequestsInspector = toggleRequestsInspector;
+
+function toggleRequestsInspector() {
+  const card = document.getElementById('npm-requests-inspector-card');
+  const btn = document.getElementById('btn-toggle-requests-inspector');
+  if (!card) return;
+  const isCollapsed = card.classList.toggle('is-collapsed');
+  if (btn) {
+    btn.setAttribute('aria-expanded', String(!isCollapsed));
+    btn.title = isCollapsed ? 'Expand Request Inspector' : 'Collapse Request Inspector';
+  }
+  try {
+    localStorage.setItem('npm_requests_inspector_collapsed', isCollapsed ? '1' : '0');
+  } catch (_) {}
+}
 
 function filterRequestEvents(type) {
   currentRequestFilterType = type || 'all';
@@ -4133,7 +4181,13 @@ function renderNPMRequestsTable(events) {
     if (ev.error) {
       errorDetailHtml = `
         <div class="npm-req-error-pill" title="${escapeHtml(ev.error)}">
-          <span class="npm-error-icon">⚠</span>
+          <span class="npm-error-icon">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path>
+              <line x1="12" y1="9" x2="12" y2="13"></line>
+              <line x1="12" y1="17" x2="12.01" y2="17"></line>
+            </svg>
+          </span>
           <span class="npm-error-msg">${escapeHtml(ev.error)}</span>
         </div>
       `;
@@ -4216,7 +4270,13 @@ function showRequestDetailModal(id) {
     adviceHtml = `
       <div class="npm-diagnostic-advice-box advice-error">
         <div class="advice-header">
-          <span class="advice-icon">⚠️</span>
+          <span class="advice-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path>
+              <line x1="12" y1="9" x2="12" y2="13"></line>
+              <line x1="12" y1="17" x2="12.01" y2="17"></line>
+            </svg>
+          </span>
           <strong>Root Cause: 502 Bad Gateway (Upstream Unreachable)</strong>
         </div>
         <p>Nginx Proxy Manager attempted to proxy the request to <code>${escapeHtml(ev.upstream || 'upstream')}</code>, but the destination port was not listening, actively refused the TCP socket connection, or crashed during connection setup.</p>
@@ -4231,7 +4291,12 @@ function showRequestDetailModal(id) {
     adviceHtml = `
       <div class="npm-diagnostic-advice-box advice-error">
         <div class="advice-header">
-          <span class="advice-icon">⏱️</span>
+          <span class="advice-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+          </span>
           <strong>Root Cause: 504 Gateway Timeout (Upstream Response Delayed)</strong>
         </div>
         <p>The upstream target <code>${escapeHtml(ev.upstream || 'upstream')}</code> accepted the TCP handshake but did not send a response within the proxy timeout window (${ev.latency_ms} ms elapsed).</p>
@@ -4245,7 +4310,13 @@ function showRequestDetailModal(id) {
     adviceHtml = `
       <div class="npm-diagnostic-advice-box advice-warn">
         <div class="advice-header">
-          <span class="advice-icon">⏸️</span>
+          <span class="advice-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="10" y1="15" x2="10" y2="9"></line>
+              <line x1="14" y1="15" x2="14" y2="9"></line>
+            </svg>
+          </span>
           <strong>Root Cause: 503 Service Unavailable</strong>
         </div>
         <p>The NPM proxy host is currently marked disabled or all upstream nodes in the pool are marked down.</p>
@@ -4258,7 +4329,12 @@ function showRequestDetailModal(id) {
     adviceHtml = `
       <div class="npm-diagnostic-advice-box advice-warn">
         <div class="advice-header">
-          <span class="advice-icon">🔍</span>
+          <span class="advice-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+          </span>
           <strong>Root Cause: 404 Route Not Found</strong>
         </div>
         <p>Path <code>${escapeHtml(ev.path)}</code> does not match any registered endpoint on <code>${escapeHtml(ev.host)}</code>.</p>
@@ -4272,7 +4348,12 @@ function showRequestDetailModal(id) {
     adviceHtml = `
       <div class="npm-diagnostic-advice-box advice-warn">
         <div class="advice-header">
-          <span class="advice-icon">🔒</span>
+          <span class="advice-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+            </svg>
+          </span>
           <strong>Root Cause: 403 Access Forbidden</strong>
         </div>
         <p>The client IP <code>${escapeHtml(ev.client_ip)}</code> was rejected by upstream authorization or an NPM Access List.</p>
@@ -4282,7 +4363,12 @@ function showRequestDetailModal(id) {
     adviceHtml = `
       <div class="npm-diagnostic-advice-box advice-success">
         <div class="advice-header">
-          <span class="advice-icon">✅</span>
+          <span class="advice-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+              <polyline points="22 4 12 14.01 9 11.01"></polyline>
+            </svg>
+          </span>
           <strong>Request Succeeded (HTTP 200 OK)</strong>
         </div>
         <p>Proxied successfully to upstream <code>${escapeHtml(ev.upstream || 'backend')}</code> in ${ev.latency_ms} ms with no errors.</p>
@@ -4292,7 +4378,13 @@ function showRequestDetailModal(id) {
     adviceHtml = `
       <div class="npm-diagnostic-advice-box advice-info">
         <div class="advice-header">
-          <span class="advice-icon">ℹ️</span>
+          <span class="advice-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="16" x2="12" y2="12"></line>
+              <line x1="12" y1="8" x2="12.01" y2="8"></line>
+            </svg>
+          </span>
           <strong>HTTP ${ev.status_code} Response</strong>
         </div>
         <p>${escapeHtml(ev.error || ev.status_text || 'Completed request')}</p>
