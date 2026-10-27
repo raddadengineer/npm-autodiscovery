@@ -1,0 +1,31 @@
+---
+description: Universal Database Migration Safety & Zero-Downtime Standards
+globs: *
+alwaysApply: false
+---
+
+# Database Migration Standards
+
+When modifying database schemas, DDL, or migrations:
+
+# Universal Database & Schema Migration Standards
+
+These rules enforce zero-downtime, safe rollbacks, and high-performance database schema evolution.
+
+---
+
+## 1. Mandatory Reversibility
+- Every forward migration must have an exact, functional rollback (downgrade) counterpart.
+- Never write `def downgrade(): pass` or omit rollback definitions.
+
+---
+
+## 2. Zero-Downtime Table Modifications
+- **Never add a `NOT NULL` column without a `DEFAULT`**: In large tables, this locks the table against writes or aborts if existing rows are present.
+- **Never create indexes synchronously in production databases**: Always use `CREATE INDEX CONCURRENTLY` in PostgreSQL to prevent read/write locks.
+- **Phased Column Renames**: Never execute `RENAME COLUMN` directly on active schemas. Use the Expand/Contract (Dual-Write) pattern across two releases.
+
+---
+
+## 3. Query Plan Optimization
+- Test queries against representative data volumes using `EXPLAIN (ANALYZE, BUFFERS)` to catch full sequential scans and unindexed foreign keys.

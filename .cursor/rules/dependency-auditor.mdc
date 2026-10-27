@@ -1,0 +1,11 @@
+---
+description: Multi-Ecosystem Dependency Manifest Hygiene & Security Standards
+globs: package.json,pyproject.toml,requirements*.txt,Cargo.toml,go.mod
+alwaysApply: false
+---
+
+# Dependency Hygiene Standards
+
+- Ban wildcard version specifiers (`*`, `latest`) in manifests.
+- Commit deterministic lockfiles (`package-lock.json`, `Cargo.lock`, `go.sum`, `poetry.lock`).
+- Replace deprecated libraries with actively maintained alternatives.

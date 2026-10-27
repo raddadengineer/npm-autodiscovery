@@ -1,0 +1,11 @@
+---
+description: Pre-flight Pull Request Audit and Description Generator
+globs: *
+alwaysApply: false
+---
+
+# PR Preparation Workflow
+
+1. Audit diff for scope creep, debug prints, and secrets.
+2. Run test suites to prove pass status.
+3. Formulate structured PR descriptions with verifiable receipts.

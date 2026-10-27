@@ -1,0 +1,11 @@
+---
+description: Token Footprint Profiling and AST Context Compression
+globs: *
+alwaysApply: false
+---
+
+# Context Optimization & Token Compression
+
+When ingesting or exploring large codebases:
+1. Run `compress_context.py --profile` to locate token-heavy files.
+2. Generate an AST skeleton map (`--hybrid` or `--skeleton`) to reduce token overhead by 85-95%.

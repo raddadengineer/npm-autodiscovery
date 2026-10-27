@@ -1,0 +1,9 @@
+---
+description: Documentation & Schema Drift Sentinel
+globs: *
+alwaysApply: false
+---
+
+# Documentation Sync Standards
+
+Ensure all agents, skills, and commands are accurately documented without broken internal references.

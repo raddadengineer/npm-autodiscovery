@@ -1,0 +1,41 @@
+# Project Guidelines for Claude
+
+# Universal Engineering Standards & Rules
+
+These guidelines enforce discipline, safety, and reliability when building and maintaining software across projects.
+
+---
+
+## 1. Surgical Modification Rules
+- Make only minimal, targeted changes required to achieve the objective.
+- Preserve existing code comments, docstrings, formatting, and file organization.
+- Never reformat adjacent code or reorganize imports unless explicitly asked.
+- Avoid introducing new third-party libraries when native standard-library features suffice.
+
+---
+
+## 2. Concurrency & Asynchronous Safety
+- Avoid race conditions, unchecked mutable shared state, and deadlocks.
+- In languages with complete structured concurrency (e.g. Swift 6, modern Python `asyncio`, Go goroutines), strictly adhere to language safety checks.
+- Never silence concurrency warnings with unsafe escape hatches without documentation and explicit user consent.
+
+---
+
+## 3. Resilient Error Handling & Parsing
+- Never swallow errors silently (e.g. bare `try ... except: pass` or `try?` ignoring actionable failures).
+- When parsing network responses or polymorphic JSON, use defensive schema validation or safe fallbacks.
+- Provide clear error messages that state what failed, what was expected, and the underlying diagnostic cause.
+
+---
+
+## 4. Verification & Testing Standards
+- Always run the relevant test suite before declaring a task complete.
+- Verify real exit codes (`0` for success). Never assume or hallucinate test results.
+- If no automated tests exist for the touched code, write unit tests or provide explicit reproducible verification commands.
+
+---
+
+## 5. Context Efficiency & Token Discipline
+- Use AST skeletonization (`compress_context.py --skeleton` or `context-optimizer`) when exploring large files or unfamiliar modules to extract interfaces with 85–95% token savings.
+- Never dump whole directories or massive implementation files into context when only structural signatures are required.
+

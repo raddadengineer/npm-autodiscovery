@@ -1,0 +1,48 @@
+---
+description: Universal Test Engineering & Quality Automation Standards
+globs: *
+alwaysApply: false
+---
+
+# Test Engineering Standards
+
+When authoring automated tests, fixtures, mocks, or regression suites:
+
+# Universal Testing Standards & Rules
+
+These rules enforce determinism, edge-case resilience, and zero-false-verification standards when authoring and running test suites across any tech stack.
+
+---
+
+## 1. Determinism & Flake Prevention
+- **No arbitrary sleeps**: Never use `sleep()` or `Task.sleep()` to wait for asynchronous operations. Use language-native async expectations, condition polling with timeouts, or explicit synchronization barriers.
+- **Isolated test state**: Every test must be completely independent. Ensure databases, file caches, and in-memory singletons are cleanly created and torn down between test cases.
+- **Controlled randomness**: Seed random number generators when testing probabilistic algorithms so test failures are 100% reproducible.
+
+---
+
+## 2. Boundary & Negative Testing
+- Test both the happy path and critical boundary conditions:
+  - Empty collections, null/nil values, missing fields.
+  - Numeric extremes: 0, negative values, maximum integer limits.
+  - Malformed payloads, network timeouts, invalid JSON, and disconnected sockets.
+  - Concurrent operations and race conditions under simultaneous load.
+
+---
+
+## 3. High-Signal Assertions
+- Assert specific outcomes and invariant states, not vague truthiness (e.g., assert `response.status == 404` and `response.error_code == "USER_NOT_FOUND"`, rather than merely `assert not response.ok`).
+- Provide meaningful failure messages in assertions so failures are instantly diagnosable from CI output.
+
+---
+
+## 4. Mocking & Boundary Hygiene
+- Mock at the architectural boundaries (e.g., HTTP clients, disk I/O, external payment gateways), not deep internal implementation details.
+- Avoid over-mocking that tests the mock framework rather than actual application logic.
+- Verify that mocked interactions adhere to actual production contracts and schemas.
+
+---
+
+## 5. Zero False Verification
+- Never claim a test suite passed without executing the command in the CLI and observing exit code `0`.
+- When writing a test for a reported bug, verify that the test **fails before the fix** and **passes after the fix** (Red-Green-Refactor proof).

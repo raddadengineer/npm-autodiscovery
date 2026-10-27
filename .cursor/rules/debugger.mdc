@@ -1,0 +1,37 @@
+---
+description: Universal Root-Cause Debugging & Git Bisect Standards
+globs: *
+alwaysApply: false
+---
+
+# Debugging Standards
+
+When investigating bugs, failures, or regressions:
+
+# Universal Debugging Standards & Rules
+
+These rules enforce evidence-based debugging, zero speculation, and deterministic regression isolation.
+
+---
+
+## 1. Reproduction Precedes Modification
+- Never edit production logic without first reproducing the failure in a standalone script or test case.
+- A reproduction must exit with a non-zero exit code (`1`) before any fix is attempted.
+
+---
+
+## 2. Red-Green Verification Proof
+- A bug fix is only verified when the exact same reproduction script exits `0` without modification.
+- Prove that the test did not pass spuriously (e.g. by commenting out the assertion).
+
+---
+
+## 3. Isolate via Git Bisect
+- When diagnosing a regression in an existing codebase, do not guess which commit caused it.
+- Use `git bisect` with an automated test command to locate the culprit commit authoritatively.
+
+---
+
+## 4. Deconstruct Stack Traces
+- Trace errors from the bottom of the stack to the earliest user-space frame.
+- Do not fix symptom lines in external library wrappers; trace back to the improper arguments passed from repository code.

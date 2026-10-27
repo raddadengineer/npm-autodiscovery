@@ -1,0 +1,40 @@
+---
+description: Universal Systems Architecture Standards & Decision Framework
+globs: *
+alwaysApply: false
+---
+
+# Systems Architecture Standards
+
+When designing system boundaries, schemas, or technical proposals:
+
+# Universal Software Architecture Standards
+
+These guidelines enforce modularity, loose coupling, strict interface boundaries, and high cohesion when designing or reviewing software architecture.
+
+---
+
+## 1. Single Responsibility & High Cohesion
+- Every module, service, or class must have a single clear reason to change.
+- Keep business logic decoupled from transport protocols (HTTP/gRPC/CLI) and storage mechanisms (SQL/NoSQL/Key-Value).
+
+---
+
+## 2. Dependency Inversion & Interface Segregation
+- Depend upon abstractions, not concrete implementations.
+- Keep interfaces minimal and focused on client requirements rather than exposing kitchen-sink API surfaces.
+
+---
+
+## 3. Explicit Data & Schema Contracts
+- Define unambiguous data transfer schemas with validation rules before implementing service boundaries.
+- Maintain backwards compatibility for external APIs and persisted schemas. Plan explicit migration pathways for schema changes.
+
+---
+
+## 4. Architectural Decision Records (ADRs)
+- Document non-trivial architectural decisions with:
+  - Context & Problem Statement
+  - Considered Alternatives
+  - Decision & Rationale
+  - Trade-offs & Consequences

@@ -1,0 +1,10 @@
+---
+description: Semantic Versioning & Conventional Commits Release Standards
+globs: CHANGELOG.md
+alwaysApply: false
+---
+
+# Release Management Standards
+
+- Derive version bumps (`major`, `minor`, `patch`) deterministically from Conventional Commits (`feat`, `fix`, `perf`, `BREAKING CHANGE`).
+- Keep `CHANGELOG.md` structured under Keep a Changelog sections (`Added`, `Fixed`, `Changed`, `Breaking Changes`).

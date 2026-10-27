@@ -1,0 +1,17 @@
+---
+description: Universal Session Starter & Closer Workflows
+globs: *
+alwaysApply: false
+---
+
+# Session Lifecycle Workflows
+
+## Session Kickoff
+- Ingest `SESSION_LOG.md` before making edits to retrieve handover items.
+- Verify repository branch hygiene and check for uncommitted changes.
+- Establish green baseline before editing.
+
+## Session Conclusion
+- Record completed features, changes, validation receipts, and next steps into `SESSION_LOG.md`.
+- Keep context files (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`) synchronized.
+- Never declare success without verifiable test pass (Zero False Verification).

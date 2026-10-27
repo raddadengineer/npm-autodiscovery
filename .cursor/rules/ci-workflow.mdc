@@ -1,0 +1,35 @@
+---
+description: CI/CD Pipeline Synthesis & GitHub Actions Security Standards
+globs: .github/workflows/*.yml,.github/workflows/*.yaml
+alwaysApply: false
+---
+
+# CI/CD Workflow Security Standards
+
+When authoring or auditing CI/CD pipelines:
+
+# Universal DevOps, Container, CI/CD & Release Standards
+
+These standards enforce container security, deterministic CI/CD pipelines, dependency hygiene, and reproducible releases.
+
+---
+
+## 1. Container Hardening (`container-engineer`)
+- **Multi-stage builds**: Separate build toolchains from minimal runtime images (`slim`, `alpine`, `distroless`).
+- **Non-root execution**: Always declare a non-root `USER` before `ENTRYPOINT` or `CMD`.
+- **Deterministic layer caching**: Copy package manifests and lockfiles before copying source code (`COPY . .`), and never pin base images to `:latest`.
+- **Secret isolation**: Never bake credentials into image layers via `ENV` or `ARG`.
+
+---
+
+## 2. CI/CD Pipeline Security (`ci-workflow`)
+- **Explicit permissions**: Declare top-level `permissions: read-all` and elevate only per-job as required.
+- **Immutable action references**: Never reference mutable branches (`@main`, `@master`, `@head`) in `uses:`. Pin to explicit version tags or commit SHAs.
+- **Bounded execution**: Every CI job must define `timeout-minutes` to prevent hung runners from exhausting pipeline quotas.
+- **Zero-trust triggers**: Avoid `pull_request_target` on untrusted forks with secret access.
+
+---
+
+## 3. Dependency & Release Hygiene (`dependency-auditor` & `release-manager`)
+- **No wildcard specifiers**: Ban `*`, `latest`, and unconstrained version ranges in production manifests.
+- **Conventional Commits SemVer**: Calculate version bumps (`BREAKING CHANGE` -> major, `feat` -> minor, `fix`/`perf` -> patch) deterministically from git history.

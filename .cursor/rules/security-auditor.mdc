@@ -1,0 +1,36 @@
+---
+description: Universal Application Security & SAST Auditing Standards
+globs: *
+alwaysApply: false
+---
+
+# Security Auditing Standards
+
+When auditing code, dependencies, or permissions:
+
+# Universal Security Standards & Rules
+
+These standards enforce defense-in-depth security, strict secret hygiene, and zero tolerance for remote code execution or injection vulnerabilities.
+
+---
+
+## 1. Zero Tolerance for Injection
+- Never construct SQL queries via raw string formatting, interpolation, or concatenation. Always use parameterized queries or type-safe ORM query builders.
+- Never invoke shell commands with `shell=True` or pass untrusted input to system shells. Always pass explicit argument lists.
+
+---
+
+## 2. Dynamic Evaluation Prohibition
+- Strict ban on `eval()`, `exec()`, and dynamic code construction from untrusted inputs.
+
+---
+
+## 3. Secret & Credential Hygiene
+- Zero hardcoded credentials, private keys, JWT signing secrets, or API tokens in source code.
+- Always retrieve credentials from environment variables or dedicated secret management systems (Vault, AWS Secrets Manager, 1Password CLI).
+
+---
+
+## 4. Safe Deserialization
+- Never deserialize untrusted bytes with Python `pickle` or unvalidated YAML/JSON loaders.
+- Use strict schema validation (Pydantic, Zod, Swift Codable) on all untrusted payloads.

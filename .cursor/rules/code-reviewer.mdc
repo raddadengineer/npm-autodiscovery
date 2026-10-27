@@ -1,0 +1,52 @@
+---
+description: Adversarial Senior Code Review Standards & Anti-Patterns
+globs: *
+alwaysApply: false
+---
+
+# Code Review Standards
+
+When conducting code reviews or auditing diffs, apply these rules:
+
+# Universal Code Review Standards & Anti-Patterns
+
+These standards govern code reviews to ensure rigorous quality, security, and maintainability across tech stacks.
+
+---
+
+## 1. High-Priority Anti-Patterns to Flag
+
+### A. Silent Failure & Error Swallowing
+- **Prohibited**:
+  - Python: `except Exception: pass` or bare `except: return None` without logging.
+  - Swift: `try?` on critical network or database operations where failure context is permanently lost.
+  - TypeScript / JavaScript: Empty `.catch(() => {})` or unhandled promise rejections.
+  - Go: `_ = err` ignoring returned errors.
+- **Remedy**: Always bubble up errors, map them to typed domain errors, or log with contextual metadata.
+
+---
+
+### B. Concurrency Hazards & Blocking Calls
+- **Prohibited**:
+  - Calling synchronous blocking I/O (e.g. disk or synchronous HTTP) inside async event loops.
+  - Unsynchronized mutations of dictionaries, arrays, or maps accessed from multiple threads/goroutines.
+  - Bypassing Swift 6 `@Sendable` or actor-isolation boundaries with `@unchecked Sendable` without explicit justification.
+- **Remedy**: Use structured concurrency primitives (actors, channels, locks, thread-safe queues).
+
+---
+
+### C. Security & Credential Hygiene
+- **Prohibited**:
+  - Hardcoded API keys, bearer tokens, passwords, or connection strings in code or committed config.
+  - Raw string interpolation into SQL queries, shell commands, or HTML templates.
+  - Trusting unvalidated client IDs or URLs in redirects without domain allowlisting.
+- **Remedy**: Load secrets from environment variables, use parameterized queries, and validate all untrusted inputs.
+
+---
+
+### D. Scope Creep & Collateral Churn
+- **Prohibited**:
+  - Reformatting unrelated files in the same PR.
+  - Renaming public APIs or modifying shared data models outside the PR's stated objective.
+  - Upgrading unrelated project dependencies "in passing".
+- **Remedy**: Keep PRs focused, atomic, and scoped solely to the intended feature or fix.
