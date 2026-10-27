@@ -1,6 +1,6 @@
-# NPM Auto-Discovery v2.0 🚀
+# NPM Auto-Discovery v2.2 🚀
 >
-> Automated Docker, Proxmox LXC & LXD service discovery, Layer 4 stream proxying, and dynamic ingress provisioning for **Nginx Proxy Manager (NPM)**.
+> Automated Docker, Proxmox LXC & LXD service discovery, Layer 4 stream proxying, dynamic ingress provisioning, and real-time performance analytics for **Nginx Proxy Manager (NPM)**.
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/raddadengineer/npm-autodiscovery)](https://goreportcard.com/report/github.com/raddadengineer/npm-autodiscovery)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -14,24 +14,28 @@
 
 For years, developers, sysadmins, and homelab enthusiasts faced a frustrating compromise: choose **Traefik** for its hands-free label-based dynamic routing while wrestling with steep learning curves and read-only dashboards—or choose **Nginx Proxy Manager (NPM)** for its clean UI and effortless visual SSL certificate management, at the cost of typing every single proxy host into a form by hand.
 
-**NPM Auto-Discovery v2.0 shatters this compromise.** Operating as an ultra-fast, lightweight sidecar or standalone agent, it turns Nginx Proxy Manager into an autonomous, self-healing ingress controller across your entire compute stack: Docker containers, Proxmox VE LXC containers, Canonical LXD / Incus instances, and declarative GitOps manifests (`routes.yaml`). It intercepts service lifecycle events in real time, generates declarative Nginx middlewares, eliminates cold-start `502 Bad Gateway` errors, orchestrates Layer 4 TCP/UDP streams, balances scaled upstreams, and syncs proxy hosts seamlessly through the official NPM REST API.
+**NPM Auto-Discovery v2.2 shatters this compromise.** Operating as an ultra-fast, lightweight sidecar or standalone agent, it turns Nginx Proxy Manager into an autonomous, self-healing ingress controller across your entire compute stack: Docker containers, Proxmox VE LXC containers, Canonical LXD / Incus instances, and declarative GitOps manifests (`routes.yaml`). It intercepts service lifecycle events in real time, generates declarative Nginx middlewares, eliminates cold-start `502 Bad Gateway` errors, orchestrates Layer 4 TCP/UDP streams, balances scaled upstreams, monitors real-time request metrics, and syncs proxy hosts seamlessly through the official NPM REST API.
 
-It also embeds a **real-time Cyberpunk SPA dashboard** directly inside the single statically compiled binary (zero Node.js or runtime bloat), giving you complete visibility over active ingress routes, live container discovery telemetry, and one-click manual reconciliation.
+It also embeds a **real-time Cyberpunk SPA dashboard** directly inside the single statically compiled binary (zero Node.js or runtime bloat), featuring crisp SVG icons, live Server-Sent Events (SSE) telemetry, request inspection diagnostics, and one-click manual reconciliation.
 
 ---
 
-## ✨ Features (v2.0)
+## ✨ Features (v2.2)
 
 - **⚡ Native Multi-Engine Discovery:** Real-time Docker socket events, Proxmox VE REST API token polling (with tags/notes parsing), and Canonical LXD / Incus Unix domain socket lifecycle streaming.
+- **📊 Real-Time NPM Analytics & Traffic Metrics:** Live HTTP request telemetry, status code distributions (2xx, 3xx, 4xx, 5xx), response time latency percentiles (P50/P95/P99), total bandwidth, and active connection tracking.
+- **🔍 Request Inspector & Error Diagnostics:** Deep-dive access and error log inspection with status filtering, upstream resolution analysis, and real client IP extraction (`X-Forwarded-For`, `CF-Connecting-IP`, `X-Real-IP`).
 - **🛡️ Zero-502 HealthCheck-Aware Ingress:** Holds incoming ingress during container warm-up (`starting` state) and smoothly routes traffic only after healthy checks succeed, with configurable timeouts and fallbacks.
 - **🔧 Declarative Nginx Middlewares:** Traefik-style 1-line label middlewares for URL path prefix stripping (`npm.middleware.strip_prefix`), IP CIDR whitelisting, token-bucket rate limiting, CORS preflights, and security headers.
 - **📍 Path-Based Microservice Aggregation:** Mounts separate containers onto subpaths (e.g. `/api`, `/ws`, `/auth`) under a single parent domain, synthesized automatically into NPM custom locations.
 - **⚖️ Dynamic Upstream Load Balancing:** Bundles horizontally scaled containers (`docker compose up --scale svc=3`) into native Nginx `upstream` blocks with `round_robin`, `least_conn`, or `ip_hash`.
 - **🎮 Layer 4 TCP/UDP Stream Discovery:** Automatically discovers and provisions Layer 4 TCP/UDP proxying for game servers (Minecraft, Valheim), databases (Postgres, Redis), MQTT, and DNS.
+- **🌐 Fleet Control Plane & Offline Pruning:** Centralized cluster management with one-click agent provisioning generator, offline node pruning, and individual node deletion.
+- **🖥️ Proxmox Multi-Endpoint Management:** Dynamic addition, testing, persistence (`pve_endpoints.json`), and deletion of multiple Proxmox VE hypervisor nodes directly from the UI.
 - **📈 Prometheus & OTel Metrics Endpoint:** Exposes `/metrics` standard endpoint tracking active proxies, stream counts, sync latency histograms, and container health states.
 - **🎯 Smart Network & IP Mapping:** Supports three host resolution strategies (`auto`, `name`, `ip`) and CIDR subnet filtering to route across Docker bridge networks, physical LANs, and hypervisor bridges.
 - **🧹 Automatic Orphan Pruning:** Automatically purges proxy hosts and streams when containers stop or die, with multi-host collision prevention (`HOST_ID`).
-- **📊 Real-Time Cyberpunk Dashboard:** Embedded Web UI featuring live Server-Sent Events (SSE) log streaming, search & filtering, stats cards, and a Docker / PVE / LXD configuration generator.
+- **🎨 Crisp SVG Cyberpunk Dashboard:** Embedded Web UI featuring crisp, scalable SVG icons, responsive tab navigation, interactive table sorting/filtering, live Server-Sent Events (SSE) log streaming, and dark theme enhancements.
 - **📦 Ultra-Lightweight Single Binary:** Statically compiled with Go, embedding the entire frontend. The multi-stage Alpine Docker image is only **~15MB** in size and consumes **<15MB RAM**.
 
 ---
@@ -167,7 +171,17 @@ Add these labels to any Docker container (via `docker-compose.yml` or `docker ru
 | `DEFAULT_SSL_FORCED` | `false` | Default SSL force redirect if not specified in labels. |
 | `DEFAULT_WEBSOCKET` | `true` | Default WebSocket upgrade policy. |
 | `DEFAULT_BLOCK_EXPLOITS` | `true` | Default exploit blocking policy. |
+| `AUTO_DETECT_SSL` | `true` | Automatically match existing wildcard/domain certificates in NPM. |
+| `AUTO_SSL_FORCED` | `false` | Automatically force HTTPS redirect when SSL certificate is matched. |
+| `DEFAULT_HEALTHCHECK_ENABLED` | `false` | Global default for Zero-502 healthcheck-aware routing. |
+| `DEFAULT_HEALTHCHECK_TIMEOUT` | `60s` | Global default maximum wait time for warmup checks. |
+| `DEFAULT_HEALTHCHECK_FALLBACK` | `disable` | Fallback action on warmup failure (`disable`, `keep`, `redirect`). |
 | `LABEL_PREFIX` | `npm.` | Custom label prefix to match. |
+| `DASHBOARD_ENABLED` | `true` | Set `false` on remote worker nodes for headless operation (zero open ports). |
+| `MAIN_NODE_URL` | `""` | URL of central main node (e.g. `http://192.168.1.10:8080`) to push worker telemetry. |
+| `CLUSTER_TOKEN` | `""` | Pre-shared authentication token for cluster communication. |
+| `PUSH_INTERVAL` | `15s` | Telemetry push interval for worker agents reporting to central controller. |
+| `LOG_LEVEL` | `info` | Agent logging verbosity (`debug`, `info`, `warn`, `error`). |
 | `PORT` | `8080` | Port for the built-in Web Management Dashboard and REST API. |
 
 ---
@@ -445,13 +459,22 @@ The application serves a single-page web app and REST API on `PORT` (`8080`):
 - `GET /api/proxies?node=<node_id>`: Returns list of all active auto-discovered proxy hosts (aggregated across all cluster nodes or filtered by node ID) with target IPs, domains, and SSL status.
 - `GET /api/streams?node=<node_id>`: Returns list of all active TCP/UDP L4 streams across nodes.
 - `GET /api/containers?node=<node_id>`: Returns running Docker containers and their discovery readiness.
+- `GET /api/metrics/overview`: Aggregated real-time NPM traffic analytics, HTTP status code distributions (2xx, 3xx, 4xx, 5xx), response latencies, and throughput.
+- `GET /api/metrics/probe`: Active real-time health and latency probe of NPM upstream endpoints.
+- `GET /api/metrics/requests?status=&search=&limit=`: Access log stream and request inspector records with client IP extraction and error diagnostics.
 - `GET /api/cluster/nodes`: Returns status, last heartbeat, container/proxy counts, and platform details for all worker nodes in the cluster.
-- `GET /api/cluster/setup-info`: Provides controller parameters and cluster tokens for automated agent provisioning.
+- `DELETE /api/cluster/nodes/{nodeId}`: Remove or decommission an individual worker node from cluster state.
+- `POST /api/cluster/nodes/prune`: Bulk prune all disconnected/offline cluster worker nodes.
+- `GET /api/cluster/nodes/{nodeId}/proxmox`: Fetch Proxmox VE hypervisor endpoints associated with a cluster node.
 - `POST /api/cluster/report`: Secure ingestion endpoint for remote worker nodes to push periodic telemetry reports (requires `X-Cluster-Token` or Bearer authentication if configured).
+- `GET /api/cluster/setup-info`: Provides controller parameters and cluster tokens for automated agent provisioning.
+- `GET /api/proxmox/config`: Local Proxmox VE hypervisor configurations and endpoints.
+- `POST /api/proxmox/test`: Real-time Proxmox VE connectivity and credential validation.
 - `POST /api/sync`: Forces an immediate full container scan and synchronization with NPM.
 - `GET /api/events/stream`: Live Server-Sent Events (SSE) log stream for real-time terminal output across all nodes.
 - `GET /api/events`: Fetches recent log history buffer.
 - `GET /api/config`: Returns active non-sensitive configuration settings.
+- `GET /metrics`: Standard Prometheus metrics endpoint.
 
 ---
 
@@ -478,6 +501,11 @@ NPM_PASS=changeme \
 PORT=8080 \
 ./npm-autodiscovery
 ```
+
+### 🌿 Branching Strategy
+
+- **`main`**: Production releases only. Kept clean and mirrors release tags.
+- **`develop`**: Active development, integration, and agent-assisted workflows. Feature branches should branch from and merge into `develop`.
 
 ---
 
